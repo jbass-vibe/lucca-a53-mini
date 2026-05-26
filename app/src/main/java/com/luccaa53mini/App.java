@@ -3,6 +3,7 @@ package com.luccaa53mini;
 import android.app.Application;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.pm.ApplicationInfo;
 
 public class App extends Application {
 
@@ -21,12 +22,22 @@ public class App extends Application {
     public void onCreate() {
         super.onCreate();
         instance = this;
-        devMode = prefs().getBoolean(KEY_DEV, false);
+        // Dev mode only allowed in debug builds
+        if (isDebuggable()) {
+            devMode = prefs().getBoolean(KEY_DEV, false);
+        } else {
+            devMode = false;
+        }
+    }
+
+    public static boolean isDebuggable() {
+        return (instance.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
     }
 
     // ── Dev mode toggle ──────────────────────────────────────────────────────
 
     public static void setDevMode(boolean enabled) {
+        if (!isDebuggable()) return;
         devMode = enabled;
         prefs().edit().putBoolean(KEY_DEV, enabled).apply();
     }

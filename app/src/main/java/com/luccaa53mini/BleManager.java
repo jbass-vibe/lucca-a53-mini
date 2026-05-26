@@ -88,7 +88,9 @@ public class BleManager implements IS1Device {
             failConnection("Connection timed out");
     private final Runnable opTimeoutRunnable = () -> {
         opInProgress = false;
-        notifyError("Operation timed out; retrying next step");
+        if (App.isDebuggable()) {
+            Log.w(TAG, "Operation timed out; skipping to next item in queue");
+        }
         drainQueue();
     };
 
@@ -266,7 +268,10 @@ public class BleManager implements IS1Device {
         @Override
         public void onConnectionStateChange(BluetoothGatt g, int status, int newState) {
             mainHandler.removeCallbacks(connectTimeoutRunnable);
-            Log.d(TAG, "onConnectionStateChange - status: " + status + ", newState: " + newState);
+            
+            if (App.isDebuggable()) {
+                Log.d(TAG, "onConnectionStateChange - status: " + status + " (" + getStatusString(status) + "), newState: " + newState);
+            }
 
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 state = State.CONNECTED;
@@ -282,7 +287,7 @@ public class BleManager implements IS1Device {
                 // status 133 is often a stack congestion issue.
                 // If it happens on first attempt, try once more with autoConnect=true.
                 if (status == 133 && !isConnectingWithAuto && state == State.CONNECTING) {
-                    Log.w(TAG, "Connect failed with 133. Retrying with autoConnect=true...");
+                    if (App.isDebuggable()) Log.w(TAG, "Connect failed with 133. Retrying with autoConnect=true...");
                     isConnectingWithAuto = true;
                     mainHandler.post(() -> {
                         try {
@@ -310,16 +315,27 @@ public class BleManager implements IS1Device {
                 state = State.DISCONNECTED;
                 mainHandler.post(() -> {
                     if (wasConnected && listener != null) listener.onDisconnected();
-                    else if (listener != null) listener.onConnectionFailed("Connect failed (status " + status + ")");
+                    else if (listener != null) {
+                        listener.onConnectionFailed(getHumanReadableError(status, "connection"));
+                    }
                 });
             }
         }
 
+        private String getStatusString(int status) {
+            if (status == BluetoothGatt.GATT_SUCCESS) return "SUCCESS";
+            if (status == 133) return "GATT_ERROR/STACK_CONGESTION";
+            if (status == 8) return "GATT_INSUF_AUTHORIZATION";
+            if (status == 19) return "GATT_CONN_TERMINATE_PEER_USER";
+            if (status == 62) return "GATT_CONN_FAIL_ESTABLISH";
+            return "CODE_" + status;
+        }
+
         @Override
         public void onServicesDiscovered(BluetoothGatt g, int status) {
-            Log.d(TAG, "onServicesDiscovered - status: " + status);
+            if (App.isDebuggable()) Log.d(TAG, "onServicesDiscovered - status: " + status);
             if (status != BluetoothGatt.GATT_SUCCESS) {
-                notifyError("Service discovery failed: " + status);
+                notifyError(getHumanReadableError(status, "discovery"));
                 return;
             }
 
@@ -355,16 +371,23 @@ public class BleManager implements IS1Device {
                                          byte[] value, int status) {
             mainHandler.removeCallbacks(opTimeoutRunnable);
             opInProgress = false;
+            
+            UUID uuid = c.getUuid();
+            byte[] val = (value != null) ? value : c.getValue();
+
+            if (App.isDebuggable()) {
+                Log.d(TAG, "BLE READ: " + uuid + " status: " + status + " val: " + Arrays.toString(val));
+            }
+
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 mainHandler.post(() -> {
-                    notifyError("Read failed: " + status);
+                    notifyError(getHumanReadableError(status, "read"));
                     opQueue.clear(); // Clear pending ops on failure
                     drainQueue();
                 });
                 return;
             }
-            UUID uuid = c.getUuid();
-            byte[] val = (value != null) ? value : c.getValue();
+
             mainHandler.post(() -> {
                 if (CHAR_SYNC_CONTROL.equals(uuid)) {
                     if (listener != null) listener.onSyncControlRead(val != null && val.length > 0 && val[0] == 0x01);
@@ -373,7 +396,9 @@ public class BleManager implements IS1Device {
                     if (listener != null) listener.onScheduleRead(full);
                 } else if (CHAR_RTC_READ.equals(uuid) || CHAR_RTC_SET.equals(uuid)) {
                     int[] parsed = parseRtc(val);
-                    Log.d(TAG, "RTC Read raw: " + Arrays.toString(val) + " parsed: " + Arrays.toString(parsed));
+                    if (App.isDebuggable()) {
+                        Log.d(TAG, "RTC Read parsed: " + Arrays.toString(parsed));
+                    }
                     if (listener != null) listener.onRtcRead(parsed);
                 }
                 drainQueue();
@@ -386,6 +411,11 @@ public class BleManager implements IS1Device {
             mainHandler.removeCallbacks(opTimeoutRunnable);
             opInProgress = false;
             UUID uuid = c.getUuid();
+
+            if (App.isDebuggable()) {
+                Log.d(TAG, "BLE WRITE: " + uuid + " status: " + status);
+            }
+
             mainHandler.post(() -> {
                 if (status == BluetoothGatt.GATT_SUCCESS) {
                     if (CHAR_SYNC_CONTROL.equals(uuid) && listener != null)
@@ -396,13 +426,36 @@ public class BleManager implements IS1Device {
                         listener.onRtcWritten();
                     drainQueue();
                 } else {
-                    notifyError("Write failed: " + status);
+                    notifyError(getHumanReadableError(status, "write"));
                     opQueue.clear(); // Abort sequence on failure
                     drainQueue();
                 }
             });
         }
     };
+
+    private String getHumanReadableError(int status, String opType) {
+        String msg;
+        switch (status) {
+            case 133:
+                msg = "Bluetooth stack error. Solution: Toggle Bluetooth off and on, or restart your phone.";
+                break;
+            case 8: // GATT_INSUF_AUTHORIZATION
+            case 137: // GATT_AUTH_FAIL
+                msg = "Pairing error. Solution: Unpair the machine in Android Bluetooth settings and try again.";
+                break;
+            case 19: // GATT_CONN_TERMINATE_PEER_USER
+                msg = "Machine disconnected the link.";
+                break;
+            case 6: // GATT_NOT_FOUND
+                msg = "Bluetooth service not found. Make sure you are connecting to the correct machine.";
+                break;
+            default:
+                msg = "Bluetooth " + opType + " error (Code " + status + "). Solution: Try moving closer to the machine.";
+                break;
+        }
+        return msg;
+    }
 
     // ── Operation queue helpers ──────────────────────────────────────────────
     private void enqueue(Runnable op) {
@@ -425,9 +478,8 @@ public class BleManager implements IS1Device {
         enqueue(() -> writeChar(charSyncControl, new byte[]{0x00}));
         enqueue(() -> writeChar(charSyncControl, new byte[]{0x01}));
         enqueue(() -> writeChar(charSchedule, schedule.toBytes()));
-        enqueue(() -> readChar(charRtcRead));
-        enqueue(() -> writeChar(charRtcSet, buildRtcPayload(tz)));
-        enqueue(() -> readChar(charRtcRead));
+        // Note: We skip the RTC update here to avoid confusing status messages in UI
+        // and to keep the schedule sync atomic.
     }
 
     /** Write the schedule without touching the RTC */
@@ -468,6 +520,7 @@ public class BleManager implements IS1Device {
     // ── Low-level GATT helpers ───────────────────────────────────────────────
     private void readChar(BluetoothGattCharacteristic c) {
         if (gatt == null || c == null) { opInProgress = false; drainQueue(); return; }
+        if (App.isDebuggable()) Log.d(TAG, "BLE QUEUE -> READ: " + c.getUuid());
         try {
             if (!gatt.readCharacteristic(c)) {
                 Log.e(TAG, "readCharacteristic failed to initiate");
@@ -483,6 +536,7 @@ public class BleManager implements IS1Device {
 
     private void writeChar(BluetoothGattCharacteristic c, byte[] value) {
         if (gatt == null || c == null) { opInProgress = false; drainQueue(); return; }
+        if (App.isDebuggable()) Log.d(TAG, "BLE QUEUE -> WRITE: " + c.getUuid() + " val: " + Arrays.toString(value));
         try {
             boolean success;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

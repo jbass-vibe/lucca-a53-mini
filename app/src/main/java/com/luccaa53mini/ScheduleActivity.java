@@ -3,6 +3,7 @@ package com.luccaa53mini;
 import android.app.TimePickerDialog;
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.*;
 import android.widget.*;
 import androidx.activity.OnBackPressedCallback;
@@ -60,6 +61,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
 
     // Bottom bar
     private Button btnSaveSync;
+    private ProgressBar btnSaveSpinner;
 
     // ── Generic Sync State ──────────────────────────────────────────────────
     private enum SyncType { NONE, SCHEDULE, CLOCK, MASTER_TOGGLE }
@@ -110,6 +112,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         slotsContainer    = findViewById(R.id.slotsContainer);
         btnAddSlot        = findViewById(R.id.btnAddSlot);
         btnSaveSync       = findViewById(R.id.btnSaveSync);
+        btnSaveSpinner    = findViewById(R.id.btnSaveSpinner);
         devPanel          = findViewById(R.id.devPanel);
 
         btnDisconnect.setOnClickListener(v -> confirmDisconnect());
@@ -462,9 +465,11 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
     private void performGenericWrite() {
         setInteractionEnabled(false);
         String label = (currentSyncType == SyncType.SCHEDULE) ? "schedule" : (currentSyncType == SyncType.CLOCK ? "clock" : "sync control");
-        setSyncStatus(String.format(Locale.US, "Syncing %s (%d/3)…", label, syncAttempts), true);
+        setSyncStatus(String.format(Locale.US, "Syncing %s…", label), true);
         
         if (currentSyncType == SyncType.SCHEDULE) {
+            btnSaveSpinner.setVisibility(View.VISIBLE);
+            btnSaveSync.setAlpha(0.5f);
             device.syncSchedule(pendingSchedule, TimeZone.getDefault());
         } else if (currentSyncType == SyncType.CLOCK) {
             device.syncRtc(TimeZone.getDefault());
@@ -478,6 +483,11 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         swMasterSync.setEnabled(enabled);
         btnAddSlot.setEnabled(enabled);
         btnDisconnect.setEnabled(enabled);
+        
+        if (enabled) {
+            btnSaveSpinner.setVisibility(View.GONE);
+            btnSaveSync.setAlpha(1.0f);
+        }
         
         // Cards and their children
         for (int i = 0; i < slotsContainer.getChildCount(); i++) {
@@ -563,7 +573,8 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         runOnUiThread(() -> { 
             S1Schedule readBack = S1Schedule.fromBytes(raw);
             if (currentSyncType == SyncType.SCHEDULE) {
-                if (isSame(readBack, pendingSchedule)) {
+                byte[] pendingBytes = pendingSchedule.toBytes();
+                if (Arrays.equals(raw, pendingBytes)) {
                     setSyncStatus("Schedule verified ✓", false);
                     hardwareSchedule = pendingSchedule;
                     pendingSchedule = null;
@@ -571,6 +582,9 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
                     setInteractionEnabled(true);
                     if (App.devMode && App.getStub() != null) App.getStub().clearVerifyFail();
                 } else {
+                    if (App.isDebuggable()) {
+                        logScheduleMismatch(raw, pendingBytes);
+                    }
                     handleSyncRetry();
                 }
             } else {
@@ -582,10 +596,24 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         }); 
     }
 
+    private void logScheduleMismatch(byte[] read, byte[] pending) {
+        Log.e("ScheduleSync", "Verification failed. Byte mismatch:");
+        for (int i = 0; i < 7; i++) {
+            byte[] rDay = Arrays.copyOfRange(read, i * 12, (i + 1) * 12);
+            byte[] pDay = Arrays.copyOfRange(pending, i * 12, (i + 1) * 12);
+            if (!Arrays.equals(rDay, pDay)) {
+                Log.d("ScheduleSync", String.format(Locale.US, "Day %d (%s) mismatch!", i, S1Schedule.DAY_NAMES[i]));
+                Log.d("ScheduleSync", "  Read:    " + Arrays.toString(rDay));
+                Log.d("ScheduleSync", "  Pending: " + Arrays.toString(pDay));
+            }
+        }
+    }
+
     private void handleSyncRetry() {
         if (syncAttempts < 3) {
             syncAttempts++;
-            performGenericWrite();
+            // Add a delay before retrying to avoid spamming the machine
+            mainHandler.postDelayed(this::performGenericWrite, 1500);
         } else {
             setSyncStatus("Sync failed after 3 attempts", false);
             updateConnectionStatus(true, true); // Still connected, but sync failed
@@ -595,15 +623,6 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
             pendingClockSyncTime = 0;
             setInteractionEnabled(true);
         }
-    }
-
-    private boolean isSame(S1Schedule a, S1Schedule b) {
-        for (int d = 0; d < 7; d++) {
-            for (int s = 0; s < 3; s++) {
-                if (!Objects.equals(a.slots[d][s], b.slots[d][s])) return false;
-            }
-        }
-        return true;
     }
 
     private void showSyncFailureDialog() {

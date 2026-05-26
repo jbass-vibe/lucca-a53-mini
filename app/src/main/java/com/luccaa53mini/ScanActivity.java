@@ -40,6 +40,7 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
     private static final int PERM_REQUEST = 101;
 
     private final android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private boolean isFirstRun = true;
 
     // ── Lifecycle ────────────────────────────────────────────────────────────
     @Override
@@ -58,9 +59,24 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
         // In dev mode skip BT checks and scan immediately
         if (App.devMode) {
             device.startScan();
-        } else {
-            addLog("Ready to scan.");
         }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Ensure we are disconnected when returning to the scan screen
+        if (device != null) {
+            device.disconnect();
+        }
+        
+        if (!isFirstRun) {
+            clearLogs();
+            addLog("Disconnected.");
+        }
+        isFirstRun = false;
+
+        setState(UiState.IDLE);
     }
 
     @Override
@@ -89,6 +105,11 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
     }
 
     private void applyDevModeUi() {
+        if (!App.isDebuggable()) {
+            findViewById(R.id.devBanner).setVisibility(View.GONE);
+            swDevMode.setVisibility(View.GONE);
+            return;
+        }
         swDevMode.setChecked(App.devMode);
         devBanner.setVisibility(App.devMode ? View.VISIBLE : View.GONE);
 
@@ -144,8 +165,9 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
                 spinner.setVisibility(View.VISIBLE);
                 btnPrimary.setVisibility(View.GONE);
                 btnCancel.setVisibility(View.VISIBLE);
-                btnCancel.setText(R.string.btn_cancel);
+                btnCancel.setText("STOP SCANNING");
                 btnCancel.setOnClickListener(v -> {
+                    addLog("Scan stopped by user.");
                     device.stopScan();
                     setState(UiState.IDLE);
                 });
@@ -163,8 +185,9 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
                 spinner.setVisibility(View.VISIBLE);
                 btnPrimary.setVisibility(View.GONE);
                 btnCancel.setVisibility(View.VISIBLE);
-                btnCancel.setText(R.string.btn_cancel);
+                btnCancel.setText("CANCEL");
                 btnCancel.setOnClickListener(v -> {
+                    addLog("Connection cancelled by user.");
                     device.disconnect();
                     setState(UiState.IDLE);
                 });
@@ -180,8 +203,9 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
                 spinner.setVisibility(View.VISIBLE);
                 btnPrimary.setVisibility(View.GONE);
                 btnCancel.setVisibility(View.VISIBLE);
-                btnCancel.setText(R.string.btn_cancel);
+                btnCancel.setText("CANCEL");
                 btnCancel.setOnClickListener(v -> {
+                    addLog("Connection cancelled by user.");
                     device.disconnect();
                     setState(UiState.IDLE);
                 });
@@ -260,6 +284,10 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
     }
 
     // ── Log helper ────────────────────────────────────────────────────────────
+    private void clearLogs() {
+        logContainer.removeAllViews();
+    }
+
     private void addLog(String message) {
         tvLogHeader.setVisibility(View.VISIBLE);
         logContainer.setVisibility(View.VISIBLE);
@@ -345,7 +373,6 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
 
     @Override public void onDisconnected() {
         mainHandler.post(() -> {
-            addLog("Disconnected.");
             setState(UiState.IDLE);
         });
     }

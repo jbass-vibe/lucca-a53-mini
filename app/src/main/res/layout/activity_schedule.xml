@@ -231,10 +231,9 @@
         android:visibility="gone"/>
 
     <!-- ── Bottom save bar ────────────────────────────────────────────── -->
-    <LinearLayout
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
         android:background="@color/card_surface"
         android:paddingHorizontal="20dp"
         android:paddingTop="12dp"
@@ -255,6 +254,15 @@
             android:stateListAnimator="@null"
             app:cornerRadius="14dp"/>
 
-    </LinearLayout>
+        <ProgressBar
+            android:id="@+id/btnSaveSpinner"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_gravity="center_vertical|end"
+            android:layout_marginEnd="20dp"
+            android:indeterminateTint="@color/bg_dark"
+            android:visibility="gone"/>
+
+    </FrameLayout>
 
 </LinearLayout>

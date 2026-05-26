@@ -169,37 +169,43 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- Primary action button -->
-        <Button
-            android:id="@+id/btnPrimary"
+        <!-- Action button container to prevent layout shifting -->
+        <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:text="Start Scan"
-            android:fontFamily="monospace"
-            android:textSize="13sp"
-            android:letterSpacing="0.08"
-            android:backgroundTint="@color/copper"
-            android:textColor="@color/bg_dark"
-            style="@style/Widget.MaterialComponents.Button"
-            android:stateListAnimator="@null"
-            app:cornerRadius="14dp"
-            android:layout_marginBottom="12dp"/>
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="32dp">
 
-        <!-- Cancel button -->
-        <Button
-            android:id="@+id/btnCancel"
-            android:layout_width="match_parent"
-            android:layout_height="52dp"
-            android:text="Cancel"
-            android:fontFamily="monospace"
-            android:textSize="13sp"
-            android:visibility="gone"
-            android:backgroundTint="@color/card_surface"
-            android:textColor="@color/text_muted"
-            style="@style/Widget.MaterialComponents.Button"
-            android:stateListAnimator="@null"
-            app:cornerRadius="14dp"
-            android:layout_marginBottom="32dp"/>
+            <!-- Primary action button -->
+            <Button
+                android:id="@+id/btnPrimary"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:text="Start Scan"
+                android:fontFamily="monospace"
+                android:textSize="13sp"
+                android:letterSpacing="0.08"
+                android:backgroundTint="@color/copper"
+                android:textColor="@color/bg_dark"
+                style="@style/Widget.MaterialComponents.Button"
+                android:stateListAnimator="@null"
+                app:cornerRadius="14dp"/>
+
+            <!-- Cancel button (Stop Scanning / Cancel) -->
+            <Button
+                android:id="@+id/btnCancel"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:text="Cancel"
+                android:fontFamily="monospace"
+                android:textSize="13sp"
+                android:visibility="gone"
+                android:backgroundTint="@color/card_surface"
+                android:textColor="@color/text_muted"
+                style="@style/Widget.MaterialComponents.Button"
+                android:stateListAnimator="@null"
+                app:cornerRadius="14dp"/>
+
+        </FrameLayout>
 
         <!-- Log section -->
         <TextView
