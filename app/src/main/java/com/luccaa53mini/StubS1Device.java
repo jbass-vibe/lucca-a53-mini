@@ -175,8 +175,16 @@ public class StubS1Device implements IS1Device {
         long now = System.currentTimeMillis() + rtcOffsetMs;
         Calendar cal = Calendar.getInstance();
         cal.setTimeInMillis(now);
-        return new int[]{ cal.get(Calendar.DAY_OF_MONTH), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.YEAR) - 2000,
-                cal.get(Calendar.DAY_OF_WEEK), cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), cal.get(Calendar.SECOND) };
+        // Match new protocol: [Year, Month, Day, DOW, Hour, Minute, Second]
+        return new int[]{
+                cal.get(Calendar.YEAR) - 2000,
+                cal.get(Calendar.MONTH) + 1,
+                cal.get(Calendar.DAY_OF_MONTH),
+                cal.get(Calendar.DAY_OF_WEEK),
+                cal.get(Calendar.HOUR_OF_DAY),
+                cal.get(Calendar.MINUTE),
+                cal.get(Calendar.SECOND)
+        };
     }
 
     private void applyRtcSync(TimeZone tz) {

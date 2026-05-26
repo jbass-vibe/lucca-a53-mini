@@ -42,7 +42,6 @@ public class BleManager implements IS1Device {
     // ── Callback interface ──────────────────────────────────────────────────
     public interface Listener {
         void onScanStarted();
-        void onDeviceDiscovered(String name, String address); // Log every nearby device
         void onDeviceFound(String name, String address);      // Target found
         void onScanTimeout();
         void onScanFailed(int errorCode);
@@ -131,7 +130,13 @@ public class BleManager implements IS1Device {
 
     public void stopScan() {
         mainHandler.removeCallbacks(scanTimeoutRunnable);
-        if (scanner != null) { try { scanner.stopScan(scanCallback); } catch (Exception ignored) {} }
+        if (scanner != null) {
+            try {
+                scanner.stopScan(scanCallback);
+            } catch (SecurityException e) {
+                Log.e(TAG, "SecurityException while stopping scan: " + e.getMessage());
+            } catch (Exception ignored) {}
+        }
     }
 
     private void onScanTimeout() {
@@ -351,7 +356,9 @@ public class BleManager implements IS1Device {
                     byte[] full = expandSchedule(val);
                     if (listener != null) listener.onScheduleRead(full);
                 } else if (CHAR_RTC_READ.equals(uuid) || CHAR_RTC_SET.equals(uuid)) {
-                    if (listener != null) listener.onRtcRead(parseRtc(val));
+                    int[] parsed = parseRtc(val);
+                    Log.d(TAG, "RTC Read raw: " + Arrays.toString(val) + " parsed: " + Arrays.toString(parsed));
+                    if (listener != null) listener.onRtcRead(parsed);
                 }
                 drainQueue();
             });
@@ -482,36 +489,26 @@ public class BleManager implements IS1Device {
         }
     }
 
-    /** Fallback: find char by UUID first, then walk handles if needed */
-    private BluetoothGattCharacteristic getOrFallback(BluetoothGattService svc, UUID uuid, int handle) {
-        BluetoothGattCharacteristic c = svc.getCharacteristic(uuid);
-        if (c != null) return c;
-        // Walk by handle as a fallback (handles are sequential in the S1 service)
-        for (BluetoothGattCharacteristic ch : svc.getCharacteristics()) {
-            if (ch.getInstanceId() == handle) return ch;
-        }
-        Log.e(TAG, "Could not find characteristic " + uuid);
-        return null;
-    }
-
     // ── RTC encoding ────────────────────────────────────────────────────────
     /**
      * Build the 7-byte RTC payload for the S1 device.
-     * Format: [day][month][year_offset][sub][hour][min][sec]
-     * year_offset is observed as calendar_year - 2000 (e.g., 2023 → 23, 0x17).
-     * sub field (byte 3) mirrors byte 1 (month) based on captured samples.
+     * Format: [year_offset][month][day][dow][hour][min][sec]
+     * year_offset is observed as calendar_year - 2000 (e.g., 2026 -> 26).
+     * dow: 1=Sun, 2=Mon...7=Sat (Standard Java/Android Calendar values)
      */
     public static byte[] buildRtcPayload(java.util.TimeZone tz) {
         java.util.Calendar cal = java.util.Calendar.getInstance(tz);
-        int day   = cal.get(java.util.Calendar.DAY_OF_MONTH);
+        int year  = cal.get(java.util.Calendar.YEAR) - 2000;
         int month = cal.get(java.util.Calendar.MONTH) + 1;
-        int year  = cal.get(java.util.Calendar.YEAR) - 2000;  // proprietary epoch
-        int dow   = cal.get(java.util.Calendar.DAY_OF_WEEK);  // 1=Sun..7=Sat
+        int day   = cal.get(java.util.Calendar.DAY_OF_MONTH);
+        int dow   = cal.get(java.util.Calendar.DAY_OF_WEEK);
+        
         int hour  = cal.get(java.util.Calendar.HOUR_OF_DAY);
         int min   = cal.get(java.util.Calendar.MINUTE);
         int sec   = cal.get(java.util.Calendar.SECOND);
+        
         return new byte[]{
-                (byte) day, (byte) month, (byte) year, (byte) dow,
+                (byte) year, (byte) month, (byte) day, (byte) dow,
                 (byte) hour, (byte) min, (byte) sec
         };
     }

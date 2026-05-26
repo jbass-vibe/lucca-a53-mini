@@ -36,7 +36,6 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
     // Dev mode views
     private View         devBanner;
     private SwitchCompat swDevMode;
-    private TextView     tvDevLabel;
 
     private static final int PERM_REQUEST = 101;
 
@@ -87,7 +86,6 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
         tvLogHeader  = findViewById(R.id.tvLogHeader);
         devBanner    = findViewById(R.id.devBanner);
         swDevMode    = findViewById(R.id.swDevMode);
-        tvDevLabel   = findViewById(R.id.tvDevLabel);
     }
 
     private void applyDevModeUi() {
@@ -323,10 +321,6 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
 
     // ── BleManager.Listener ──────────────────────────────────────────────────
     @Override public void onScanStarted()  { addLog("Searching for machines..."); setState(UiState.SCANNING); }
-
-    @Override public void onDeviceDiscovered(String name, String address) {
-        // Silent on UI log for individual discoveries to reduce noise
-    }
 
     @Override public void onDeviceFound(String name, String address) {
         addLog("Machine found!");

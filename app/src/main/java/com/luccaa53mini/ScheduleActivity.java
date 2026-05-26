@@ -3,9 +3,9 @@ package com.luccaa53mini;
 import android.app.TimePickerDialog;
 import android.content.Intent;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.*;
 import android.widget.*;
+import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -13,7 +13,6 @@ import java.util.*;
 
 public class ScheduleActivity extends AppCompatActivity implements BleManager.Listener {
 
-    private static final String TAG = "ScheduleActivity";
     private IS1Device device;
     private S1Schedule hardwareSchedule = new S1Schedule(); // The cached truth from device
 
@@ -81,6 +80,15 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         bindViews();
         updateConnectionStatus(true);
         setupDevPanel();
+
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (device != null) device.disconnect();
+                finish();
+                overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+            }
+        });
 
         setInteractionEnabled(false);
         setSyncStatus("Reading device schedule…", true);
@@ -391,7 +399,11 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
 
     private boolean isScheduleChanged() {
         S1Schedule current = convertUiToHardware();
-        for (int d = 0; d < 7; d++) for (int s = 0; s < 3; s++) if (!current.slots[d][s].equals(hardwareSchedule.slots[d][s])) return true;
+        for (int d = 0; d < 7; d++) {
+            for (int s = 0; s < 3; s++) {
+                if (!Objects.equals(current.slots[d][s], hardwareSchedule.slots[d][s])) return true;
+            }
+        }
         return false;
     }
 
@@ -436,7 +448,13 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
 
     private void startClockSync() {
         currentSyncType = SyncType.CLOCK;
-        pendingClockSyncTime = System.currentTimeMillis();
+        
+        // Use normalized time for verification later
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.set(java.util.Calendar.SECOND, 0);
+        cal.set(java.util.Calendar.MILLISECOND, 0);
+        pendingClockSyncTime = cal.getTimeInMillis();
+
         syncAttempts = 1;
         performGenericWrite();
     }
@@ -520,14 +538,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
                 .show();
     }
 
-    @Override public void onBackPressed() {
-        device.disconnect();
-        super.onBackPressed();
-        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
-    }
-
     @Override public void onScanStarted() {}
-    @Override public void onDeviceDiscovered(String n, String a) {}
     @Override public void onDeviceFound(String n, String a) {}
     @Override public void onScanTimeout() {}
     @Override public void onScanFailed(int c) {}
@@ -587,7 +598,11 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
     }
 
     private boolean isSame(S1Schedule a, S1Schedule b) {
-        for (int d = 0; d < 7; d++) for (int s = 0; s < 3; s++) if (!a.slots[d][s].equals(b.slots[d][s])) return false;
+        for (int d = 0; d < 7; d++) {
+            for (int s = 0; s < 3; s++) {
+                if (!Objects.equals(a.slots[d][s], b.slots[d][s])) return false;
+            }
+        }
         return true;
     }
 
@@ -638,7 +653,19 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
                 setInteractionEnabled(true);
                 return;
             }
-            java.util.Calendar devTime = java.util.Calendar.getInstance(); devTime.set(2000 + dt[2], dt[1] - 1, dt[0], dt[4], dt[5], dt[6]);
+            java.util.Calendar devTime = java.util.Calendar.getInstance();
+            devTime.clear();
+            // Protocol: [year][month][day][dow][hour][min][sec]
+            devTime.set(java.util.Calendar.YEAR, 2000 + dt[0]);
+            devTime.set(java.util.Calendar.MONTH, dt[1] - 1);
+            devTime.set(java.util.Calendar.DAY_OF_MONTH, dt[2]);
+            devTime.set(java.util.Calendar.HOUR_OF_DAY, dt[4]);
+            devTime.set(java.util.Calendar.MINUTE, dt[5]);
+            devTime.set(java.util.Calendar.SECOND, 0);
+            
+            java.util.Calendar now = java.util.Calendar.getInstance();
+            now.set(java.util.Calendar.SECOND, 0);
+            now.set(java.util.Calendar.MILLISECOND, 0);
             
             if (currentSyncType == SyncType.CLOCK) {
                 // Verify clock was updated (within 30 seconds of target)
@@ -663,7 +690,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
             if (App.devMode) s += " [STUB]";
             tvDeviceRtc.setText(s); tvDeviceRtc.setVisibility(View.VISIBLE);
             
-            if (currentSyncType == SyncType.NONE && Math.abs(System.currentTimeMillis() - devTime.getTimeInMillis()) > 5 * 60 * 1000) {
+            if (currentSyncType == SyncType.NONE && Math.abs(now.getTimeInMillis() - devTime.getTimeInMillis()) > 5 * 60 * 1000) {
                 btnSync.setVisibility(View.VISIBLE);
                 btnSync.setEnabled(true);
                 btnSync.setAlpha(1.0f);
