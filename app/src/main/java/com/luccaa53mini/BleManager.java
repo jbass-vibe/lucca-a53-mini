@@ -201,8 +201,12 @@ public class BleManager implements IS1Device {
     public void connectTo(BluetoothDevice device) {
         if (gatt != null) {
             Log.d(TAG, "Closing existing GATT before new connection");
-            gatt.disconnect();
-            gatt.close();
+            try {
+                gatt.disconnect();
+                gatt.close();
+            } catch (SecurityException e) {
+                Log.e(TAG, "SecurityException while closing GATT: " + e.getMessage());
+            }
             gatt = null;
         }
         state = State.CONNECTING;
@@ -238,8 +242,12 @@ public class BleManager implements IS1Device {
         opQueue.clear();
         opInProgress = false;
         if (gatt != null) {
-            gatt.disconnect();
-            gatt.close();
+            try {
+                gatt.disconnect();
+                gatt.close();
+            } catch (SecurityException e) {
+                Log.e(TAG, "SecurityException while disconnecting: " + e.getMessage());
+            }
             gatt = null;
         }
         state = State.DISCONNECTED;
@@ -264,7 +272,11 @@ public class BleManager implements IS1Device {
                 state = State.CONNECTED;
                 mainHandler.post(() -> {
                     if (listener != null) listener.onConnected();
-                    g.discoverServices();
+                    try {
+                        g.discoverServices();
+                    } catch (SecurityException e) {
+                        notifyError("Permission missing for service discovery");
+                    }
                 });
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 // status 133 is often a stack congestion issue.
@@ -273,7 +285,9 @@ public class BleManager implements IS1Device {
                     Log.w(TAG, "Connect failed with 133. Retrying with autoConnect=true...");
                     isConnectingWithAuto = true;
                     mainHandler.post(() -> {
-                        g.close();
+                        try {
+                            g.close();
+                        } catch (SecurityException ignored) {}
                         if (gatt == g) gatt = null;
                         mainHandler.postDelayed(() -> {
                             if (targetDevice != null) {
@@ -287,7 +301,9 @@ public class BleManager implements IS1Device {
                 }
 
                 if (gatt == g) {
-                    gatt.close();
+                    try {
+                        gatt.close();
+                    } catch (SecurityException ignored) {}
                     gatt = null;
                 }
                 boolean wasConnected = (state == State.CONNECTED);
