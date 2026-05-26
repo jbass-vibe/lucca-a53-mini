@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Lucca BT Remote</string>
+    <string name="header_title">LUCCA A53 MINI</string>
+    <string name="searching_message">Looking for Machine</string>
+
+    <string name="state_idle_subtitle">Make sure your espresso machine is powered on and nearby.</string>
+    <string name="state_scanning">Scanning…</string>
+    <string name="state_scanning_subtitle">Searching for an espresso machine via Bluetooth LE.</string>
+    <string name="state_found">Device found</string>
+    <string name="state_connecting">Connecting…</string>
+    <string name="state_connected">Connected!</string>
+    <string name="state_no_device">No device found</string>
+    <string name="state_timeout_subtitle">Scan timed out after 15 seconds. Make sure the machine is on and in range.</string>
+    <string name="state_perm_required">Permission required</string>
+    <string name="state_perm_subtitle">Bluetooth permission is needed to discover the espresso machine.</string>
+    <string name="state_bt_off">Bluetooth off</string>
+    <string name="state_bt_off_subtitle">Please enable Bluetooth in your device settings, then try again.</string>
+    <string name="state_error">Connection error</string>
+
+    <string name="btn_start_scan">Start Scan</string>
+    <string name="btn_cancel">Cancel</string>
+    <string name="btn_try_again">Try Again</string>
+    <string name="btn_grant_perm">Grant Permission</string>
+    <string name="btn_retry">Retry</string>
+    <string name="scheduler_master_enabled">All timers enabled</string>
+    <string name="scheduler_master_disabled">All timers disabled</string>
+    <string name="timers_disabled_dialog_title">Timers are disabled</string>
+    <string name="timers_disabled_dialog_message">All timers are currently disabled. Would you like to enable them now to edit this schedule?</string>
+    <string name="timers_disabled_dialog_enable">Enable All</string>
+    <string name="timers_disabled_dialog_cancel">Not Now</string>
+</resources>

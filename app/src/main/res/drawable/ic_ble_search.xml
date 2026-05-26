@@ -1,0 +1,24 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="72dp"
+    android:height="72dp"
+    android:viewportWidth="72"
+    android:viewportHeight="72">
+    <path android:fillColor="#FF2A2A2E"
+        android:pathData="M0,0 L72,0 L72,72 L0,72 Z"/>
+    <!-- Outer arc -->
+    <path android:strokeColor="#FFD4813A" android:strokeWidth="2.5" android:fillColor="#00000000"
+        android:pathData="M22,36 A14,14 0 0 1 50,36"/>
+    <!-- Middle arc -->
+    <path android:strokeColor="#FFD4813A" android:strokeWidth="2" android:fillColor="#00000000"
+        android:pathData="M27,36 A9,9 0 0 1 45,36"/>
+    <!-- Center dot -->
+    <path android:fillColor="#FFD4813A"
+        android:pathData="M36,36m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0"/>
+    <!-- Diagonal line (magnifier handle) -->
+    <path android:strokeColor="#FFD4813A" android:strokeWidth="2.5"
+        android:pathData="M46,46 L54,54"/>
+    <!-- Circle of magnifier -->
+    <path android:strokeColor="#FFD4813A" android:strokeWidth="2.5"
+        android:fillColor="#00000000"
+        android:pathData="M36,36m-12,0a12,12 0,1 1,24 0a12,12 0,1 1,-24 0"/>
+</vector>

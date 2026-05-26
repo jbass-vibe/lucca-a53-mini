@@ -1,0 +1,27 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Steam -->
+    <path
+        android:fillColor="#D4813A"
+        android:pathData="M44,30 Q44,20 49,30 T54,30"
+        android:strokeWidth="2"
+        android:strokeColor="#D4813A"
+        android:strokeLineCap="round"/>
+    <path
+        android:fillColor="#D4813A"
+        android:pathData="M54,25 Q54,15 59,25 T64,25"
+        android:strokeWidth="2"
+        android:strokeColor="#D4813A"
+        android:strokeLineCap="round"/>
+    <!-- Cup Body -->
+    <path
+        android:fillColor="#D4813A"
+        android:pathData="M34,40 L74,40 L74,65 C74,75 66,83 54,83 L54,83 C42,83 34,75 34,65 Z" />
+    <!-- Handle -->
+    <path
+        android:fillColor="#D4813A"
+        android:pathData="M74,45 C81,45 86,50 86,57 C86,64 81,69 74,69 L74,64 C78,64 81,61 81,57 C81,53 78,50 74,50 Z" />
+</vector>

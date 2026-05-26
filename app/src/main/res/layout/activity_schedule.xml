@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg_dark">
+
+    <!-- ── Top bar ──────────────────────────────────────────────────────── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@color/card_surface"
+        android:paddingHorizontal="20dp"
+        android:paddingTop="64dp"
+        android:paddingBottom="0dp"
+        android:elevation="4dp">
+
+        <!-- Row 1: title + actions -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="12dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/header_title"
+                    android:fontFamily="serif"
+                    android:textSize="22sp"
+                    android:textColor="@color/cream"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="WEEKLY BOILER SCHEDULE"
+                    android:fontFamily="monospace"
+                    android:textSize="9sp"
+                    android:letterSpacing="0.18"
+                    android:textColor="@color/copper"/>
+            </LinearLayout>
+
+            <!-- BLE status dot + label -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginEnd="8dp">
+
+                <ImageView
+                    android:id="@+id/ivBleStatus"
+                    android:layout_width="10dp"
+                    android:layout_height="10dp"
+                    android:src="@drawable/ic_ble_dot_green"/>
+
+                <TextView
+                    android:id="@+id/tvConnectionLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Connected"
+                    android:fontFamily="monospace"
+                    android:textSize="10sp"
+                    android:textColor="#FF4CAF50"
+                    android:layout_marginStart="5dp"/>
+            </LinearLayout>
+
+            <!-- Sync clock button -->
+            <ImageButton
+                android:id="@+id/btnSync"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/ic_clock_sync"
+                android:background="@drawable/bg_icon_btn"
+                android:contentDescription="Sync clock"
+                android:layout_marginEnd="6dp"/>
+
+            <!-- Disconnect button -->
+            <ImageButton
+                android:id="@+id/btnDisconnect"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/ic_disconnect"
+                android:background="@drawable/bg_icon_btn"
+                android:contentDescription="Disconnect"/>
+
+        </LinearLayout>
+
+        <!-- Row 2: device RTC + sync status -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:id="@+id/tvDeviceRtc"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:visibility="gone"
+                android:fontFamily="monospace"
+                android:textSize="14sp"
+                android:textColor="@color/cream"/>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <ProgressBar
+                    android:id="@+id/syncSpinner"
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
+                    android:indeterminateTint="@color/copper"
+                    android:visibility="gone"
+                    android:layout_marginEnd="6dp"/>
+
+                <TextView
+                    android:id="@+id/tvSyncStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone"
+                    android:fontFamily="monospace"
+                    android:textSize="10sp"
+                    android:textColor="@color/copper"/>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Row 3: Master Scheduler Toggle -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingBottom="16dp">
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/swMasterSync"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:thumbTint="@color/switch_thumb_color"
+                app:trackTint="@color/switch_track_color"/>
+
+            <TextView
+                android:id="@+id/tvMasterSwitchLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:text="@string/scheduler_master_disabled"
+                android:fontFamily="monospace"
+                android:textSize="12sp"
+                android:letterSpacing="0.05"
+                android:textColor="@color/cream"/>
+        </LinearLayout>
+
+        <!-- Day tab bar - REMOVED for new on/off focused layout -->
+        <HorizontalScrollView
+            android:id="@+id/dayTabBarContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/dayTabBar"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="0dp"/>
+
+        </HorizontalScrollView>
+
+    </LinearLayout>
+
+    <!-- ── Slot cards scroll area ─────────────────────────────────────── -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="false"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="20dp"
+        android:paddingBottom="20dp"
+        android:clipToPadding="false">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:id="@+id/slotsContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"/>
+
+            <Button
+                android:id="@+id/btnAddSlot"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="24dp"
+                android:text="+  Add Scheduled Time"
+                android:fontFamily="monospace"
+                android:textSize="11sp"
+                android:textColor="@color/copper"
+                style="@style/Widget.MaterialComponents.Button.TextButton"/>
+
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- ── Developer control panel (stub mode only) ──────────────────── -->
+    <include
+        android:id="@+id/devPanel"
+        layout="@layout/panel_dev_controls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"/>
+
+    <!-- ── Bottom save bar ────────────────────────────────────────────── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@color/card_surface"
+        android:paddingHorizontal="20dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="28dp"
+        android:elevation="8dp">
+
+        <Button
+            android:id="@+id/btnSaveSync"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="Save &amp; Sync to Machine"
+            android:fontFamily="monospace"
+            android:textSize="13sp"
+            android:letterSpacing="0.06"
+            android:backgroundTint="@color/copper"
+            android:textColor="@color/bg_dark"
+            style="@style/Widget.MaterialComponents.Button"
+            android:stateListAnimator="@null"
+            app:cornerRadius="14dp"/>
+
+    </LinearLayout>
+
+</LinearLayout>

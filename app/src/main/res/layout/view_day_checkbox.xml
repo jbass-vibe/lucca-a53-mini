@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="36dp"
+    android:layout_height="36dp"
+    android:layout_margin="2dp"
+    android:gravity="center"
+    android:textSize="11sp"
+    android:textColor="#888888"
+    android:fontFamily="monospace"
+    android:background="@drawable/bg_day_checkbox"
+    android:clickable="true"
+    android:focusable="true"/>
