@@ -1,4 +1,4 @@
-# Lucca A53 Mini (S1 Timer BLE Controller)
+# Lucca A53 Mini (Bluetooth LE Controller)
 
 An Android application built to manage and interface with the "S1 Timer," a Bluetooth Low Energy (BLE) boiler and relay scheduling device. This app allows users to seamlessly connect to their machine, synchronize real-time clocks, and configure multi-day operating schedules.
 
