@@ -12,12 +12,20 @@ import androidx.appcompat.widget.SwitchCompat;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import java.util.*;
 
+/**
+ * The primary interface for managing the Lucca S1 weekly schedule.
+ * Handles the display of time slots, conflict detection, and synchronization
+ * with the physical machine over Bluetooth.
+ */
 public class ScheduleActivity extends AppCompatActivity implements BleManager.Listener {
 
     private IS1Device device;
     private S1Schedule hardwareSchedule = new S1Schedule(); // The cached truth from device
 
-    // UI Item wrapper to abstract "Slots"
+    /**
+     * UI Item wrapper to abstract "Slots" into a more user-friendly concept.
+     * Each entry represents a unique ON/OFF time pair that can be applied to multiple days.
+     */
     private static class UiEntry {
         int onH = 7, onM = 0;
         int offH = 8, offM = 0;
@@ -34,9 +42,10 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         @Override
         public int hashCode() {
             int h = Objects.hash(onH, onM, offH, offM);
-        return 31 * h + Arrays.hashCode(days);
+            return 31 * h + Arrays.hashCode(days);
         }
     }
+    
     private final List<UiEntry> uiEntries = new ArrayList<>();
     private android.app.Dialog activeDialog;
 
@@ -67,13 +76,21 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
     private Button btnSaveSync;
     private ProgressBar btnSaveSpinner;
 
-    // ── Generic Sync State ──────────────────────────────────────────────────
+    /**
+     * Enum defining the specific type of synchronization currently in progress.
+     */
     private enum SyncType { NONE, SCHEDULE, CLOCK, MASTER_TOGGLE }
     private SyncType currentSyncType = SyncType.NONE;
     private int syncAttempts = 0;
     private S1Schedule pendingSchedule = null;
     private long pendingClockSyncTime = 0;
 
+    /**
+     * Called when the activity is first created.
+     * Initializes UI components, listeners, and triggers initial device state reads.
+     *
+     * @param savedInstanceState Saved state bundle.
+     */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -109,6 +126,9 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         }
     }
 
+    /**
+     * Binds UI components from the layout to local variables.
+     */
     private void bindViews() {
         ivBleStatus       = findViewById(R.id.ivBleStatus);
         tvConnectionLabel = findViewById(R.id.tvConnectionLabel);
@@ -146,6 +166,9 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         btnSaveSync.setEnabled(false);
     }
 
+    /**
+     * Sets up the developer tools panel if in dev mode.
+     */
     private void setupDevPanel() {
         if (!App.devMode || !(device instanceof StubS1Device)) {
             devPanel.setVisibility(View.GONE);
@@ -176,6 +199,9 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
 
     // ── Logic ────────────────────────────────────────────────────────────────
 
+    /**
+     * Aggregates the 21 physical device slots into a smaller list of user-friendly entries.
+     */
     private void loadUiEntriesFromHardware() {
         uiEntries.clear();
         Map<String, UiEntry> map = new HashMap<>();
@@ -206,17 +232,25 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         checkAndSyncButton();
     }
 
+    /** Adds a new empty schedule card to the UI. */
     private void addNewEntry() {
         uiEntries.add(new UiEntry());
         buildCards();
         checkAndSyncButton();
     }
 
+    /**
+     * Updates the text and visual state of the scheduler master switch.
+     * @param enabled True if the scheduler is active.
+     */
     private void updateMasterSwitchUi(boolean enabled) {
         tvMasterSwitchLabel.setText(enabled ? R.string.scheduler_master_enabled : R.string.scheduler_master_disabled);
         buildCards(); // Rebuild cards to apply grey-out if needed
     }
 
+    /**
+     * Rebuilds all schedule cards in the UI container.
+     */
     private void buildCards() {
         slotsContainer.removeAllViews();
         boolean timersEnabled = swMasterSync.isChecked();
@@ -224,9 +258,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
             View card = createEntryCard(entry);
             if (!timersEnabled) {
                 card.setAlpha(0.5f);
-                // Intercept clicks on the whole card
                 card.setOnClickListener(v -> showEnableTimersDialog());
-                // Disable child clicks to ensure the card listener catches it
                 if (card instanceof ViewGroup) {
                     disableChildInteractions((ViewGroup) card);
                 }
@@ -236,7 +268,6 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
             slotsContainer.addView(card);
         }
         
-        // Also handle the "Add Slot" button
         if (!timersEnabled) {
             btnAddSlot.setAlpha(0.5f);
             btnAddSlot.setOnClickListener(v -> showEnableTimersDialog());
@@ -246,6 +277,10 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         }
     }
 
+    /**
+     * Helper to recursively disable interactions for a view group.
+     * @param layout The root layout to disable.
+     */
     private void disableChildInteractions(ViewGroup layout) {
         for (int i = 0; i < layout.getChildCount(); i++) {
             View child = layout.getChildAt(i);
@@ -257,6 +292,9 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         }
     }
 
+    /**
+     * Shows a dialog prompting the user to enable all timers before editing.
+     */
     private void showEnableTimersDialog() {
         dismissActiveDialog();
         activeDialog = new MaterialAlertDialogBuilder(this)
@@ -274,6 +312,11 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
             .show();
     }
 
+    /**
+     * Inflates and configures a single schedule card view.
+     * @param entry The data for this card.
+     * @return The configured view.
+     */
     private View createEntryCard(UiEntry entry) {
         View card = getLayoutInflater().inflate(R.layout.item_slot_card, slotsContainer, false);
         Button btnOn = card.findViewById(R.id.btnOnTime);
@@ -345,17 +388,20 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         return card;
     }
 
+    /** Checks if a day still has available hardware slots (max 3). */
     private boolean canAddSlotToDay(int dayIdx) {
         int count = 0;
         for (UiEntry e : uiEntries) if (e.days[dayIdx]) count++;
         return count < 3;
     }
 
+    /** Identifies if a specific time range conflicts with any other scheduled day. */
     private int getConflictDay(UiEntry target, int onH, int onM, int offH, int offM) {
         for (int d = 0; d < 7; d++) if (target.days[d] && hasOverlapOnDay(target, onH, onM, offH, offM, d)) return d;
         return -1;
     }
 
+    /** Checks if a time range overlaps with any other entry on a specific day. */
     private boolean hasOverlapOnDay(UiEntry targetEntry, int onH, int onM, int offH, int offM, int dayIdx) {
         int tS = onH * 60 + onM, tE = offH * 60 + offM;
         boolean tW = tE <= tS;
@@ -368,6 +414,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         return false;
     }
 
+    /** Determines if two time ranges (possibly wrapping midnight) intersect. */
     private boolean rangesConflict(int s1, int e1, boolean w1, int s2, int e2, boolean w2) {
         if (!w1 && !w2) return s1 <= e2 && s2 <= e1;
         List<int[]> r1 = new ArrayList<>(), r2 = new ArrayList<>();
@@ -377,45 +424,56 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         return false;
     }
 
+    /** Shows overlap warning dialog. */
     private void showOverlapWarning(int dayIdx) {
         dismissActiveDialog();
         activeDialog = new MaterialAlertDialogBuilder(this).setTitle("Time Conflict").setMessage("This time period overlaps or conflicts with an existing schedule on " + S1Schedule.DAY_NAMES[dayIdx] + ". \n\nEnsure that your ON and OFF times don't occur while the boiler is already scheduled to be active.")
                 .setPositiveButton("Got it", null).show();
     }
 
+    /** Shows maximum slots reached dialog. */
     private void showMaxSlotsError(int dayIdx) {
         dismissActiveDialog();
         activeDialog = new MaterialAlertDialogBuilder(this).setTitle("Limit Reached").setMessage(S1Schedule.DAY_NAMES[dayIdx] + " already has the maximum (3) scheduled times. Remove an existing scheduled time before adding a new one.")
                 .setPositiveButton("OK", null).show();
     }
 
+    /** Helper to check time order. */
     private boolean isBefore(int h1, int m1, int h2, int m2) {
         return (h1 * 60 + m1) < (h2 * 60 + m2);
     }
 
+    /** Shows invalid time range error. */
     private void showTimeRangeError() {
         dismissActiveDialog();
         activeDialog = new MaterialAlertDialogBuilder(this).setTitle("Invalid Time Range").setMessage("The boiler ON time must be earlier than the OFF time. Please adjust the times to ensure a valid operating period.")
                 .setPositiveButton("OK", null).show();
     }
 
+    /** Updates button text with formatted time. */
     private void updateTimeButton(Button b, int h, int m, String prefix) {
         java.util.Calendar cal = java.util.Calendar.getInstance(); cal.set(2024, 0, 1, h, m);
         b.setText(String.format(Locale.US, "%s %s", prefix, android.text.format.DateFormat.getTimeFormat(this).format(cal.getTime())));
     }
 
+    /** Toggles conflict visibility if times are identical. */
     private void checkConflict(TextView tv, UiEntry entry) { tv.setVisibility((entry.onH == entry.offH && entry.onM == entry.offM) ? View.VISIBLE : View.GONE); }
 
+    /** Triggers system time picker dialog. */
     private void pickTime(int h, int m, TimePickCallback cb) {
         dismissActiveDialog();
         activeDialog = new TimePickerDialog(this, (v, hour, min) -> cb.onTimePicked(hour, min), h, m, android.text.format.DateFormat.is24HourFormat(this));
         activeDialog.show();
     }
 
+    /** Simple callback for time picker results. */
     interface TimePickCallback { void onTimePicked(int h, int m); }
 
     // ── Comparison & State ──────────────────────────────────────────────────
 
+    /**
+     * Checks if the local UI schedule differs from the hardware cache and updates sync button.
+     */
     private void checkAndSyncButton() {
         boolean changed = isScheduleChanged();
         btnSaveSync.setEnabled(changed);
@@ -428,6 +486,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         }
     }
 
+    /** Returns true if current UI entries differ from hardware state. */
     private boolean isScheduleChanged() {
         S1Schedule current = convertUiToHardware();
         for (int d = 0; d < 7; d++) {
@@ -438,6 +497,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         return false;
     }
 
+    /** Converts the aggregated UI entries back into a flat 21-slot S1Schedule. */
     private S1Schedule convertUiToHardware() {
         S1Schedule hw = new S1Schedule();
         int[] dCounts = new int[7], uiToHw = {6, 0, 1, 2, 3, 4, 5};
@@ -459,6 +519,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
 
     // ── BLE Sync & Verification ──────────────────────────────────────────────
 
+    /** Validates the schedule and initiates a BLE write. */
     private void checkAndPerformSync() {
         for (UiEntry e : uiEntries) {
             boolean anyDay = false;
@@ -477,10 +538,10 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         performGenericWrite();
     }
 
+    /** Initiates a clock synchronization sequence. */
     private void startClockSync() {
         currentSyncType = SyncType.CLOCK;
         
-        // Use normalized time for verification later
         java.util.Calendar cal = java.util.Calendar.getInstance();
         cal.set(java.util.Calendar.SECOND, 0);
         cal.set(java.util.Calendar.MILLISECOND, 0);
@@ -490,6 +551,9 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         performGenericWrite();
     }
 
+    /**
+     * Executes the appropriate device write based on currentSyncType.
+     */
     private void performGenericWrite() {
         setInteractionEnabled(false);
         String label;
@@ -521,6 +585,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         }
     }
 
+    /** Toggles interaction state for all UI components. */
     private void setInteractionEnabled(boolean enabled) {
         btnSync.setEnabled(enabled);
         swMasterSync.setEnabled(enabled);
@@ -532,17 +597,14 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
             btnSaveSync.setAlpha(1.0f);
         }
         
-        // Cards and their children
         for (int i = 0; i < slotsContainer.getChildCount(); i++) {
             View card = slotsContainer.getChildAt(i);
             card.setEnabled(enabled);
-            // Replace recursion with a simple alpha/click state check
             if (card instanceof ViewGroup) {
                 card.setAlpha(enabled ? 1.0f : 0.5f);
             }
         }
         
-        // Save button has its own logic based on changes
         if (enabled) {
             checkAndSyncButton();
         } else {
@@ -550,15 +612,18 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         }
     }
 
+    /** Updates the status banner message. */
     private void setSyncStatus(String msg, boolean spinning) {
         tvSyncStatus.setText(msg); tvSyncStatus.setVisibility(View.VISIBLE); syncSpinner.setVisibility(spinning ? View.VISIBLE : View.GONE);
         if (!spinning) mainHandler.postDelayed(() -> { if (!isFinishing() && !isDestroyed()) tvSyncStatus.setVisibility(View.GONE); }, 3000);
     }
 
+    /** Updates connection status UI helper. */
     private void updateConnectionStatus(boolean connected) {
         updateConnectionStatus(connected, false);
     }
 
+    /** Updates connection status with failure support. */
     private void updateConnectionStatus(boolean connected, boolean syncFailed) {
         if (syncFailed) {
             ivBleStatus.setImageResource(R.drawable.ic_ble_error);
@@ -571,6 +636,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         }
     }
 
+    /** Shows disconnect confirmation dialog. */
     private void confirmDisconnect() {
         dismissActiveDialog();
         activeDialog = new MaterialAlertDialogBuilder(this)
@@ -582,18 +648,29 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
                 .show();
     }
 
+    /** {@inheritDoc} */
     @Override public void onScanStarted() {}
+    /** {@inheritDoc} */
     @Override public void onDeviceFound(String n, String a) {}
+    /** {@inheritDoc} */
     @Override public void onScanTimeout() {}
+    /** {@inheritDoc} */
     @Override public void onScanFailed(int c) {}
+    /** {@inheritDoc} */
     @Override public void onConnecting() {}
+    
+    /** {@inheritDoc} */
     @Override public void onConnected() { 
         runOnUiThread(() -> {
             if (isFinishing() || isDestroyed()) return;
             updateConnectionStatus(true);
         }); 
     }
+    
+    /** {@inheritDoc} */
     @Override public void onServicesDiscovered() {}
+    
+    /** {@inheritDoc} */
     @Override public void onDisconnected() {
         runOnUiThread(() -> {
             if (isFinishing() || isDestroyed()) return;
@@ -606,6 +683,8 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
                     .setNegativeButton("Stay", null).show();
         });
     }
+    
+    /** {@inheritDoc} */
     @Override public void onConnectionFailed(String r) { 
         runOnUiThread(() -> { 
             if (isFinishing() || isDestroyed()) return;
@@ -615,6 +694,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         }); 
     }
     
+    /** {@inheritDoc} */
     @Override public void onScheduleRead(byte[] raw) { 
         runOnUiThread(() -> { 
             if (isFinishing() || isDestroyed()) return;
@@ -643,6 +723,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         }); 
     }
 
+    /** Logs the exact byte differences during a failed verification. */
     private void logScheduleMismatch(byte[] read, byte[] pending) {
         Log.e("ScheduleSync", "Verification failed. Byte mismatch:");
         for (int i = 0; i < 7; i++) {
@@ -656,10 +737,10 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         }
     }
 
+    /** Manages the retry logic for failed sync operations (up to 3 attempts). */
     private void handleSyncRetry() {
         if (syncAttempts < 3) {
             syncAttempts++;
-            // Add a delay before retrying to avoid spamming the machine
             mainHandler.postDelayed(this::performGenericWrite, 1500);
         } else {
             setSyncStatus("Sync failed after 3 attempts", false);
@@ -672,6 +753,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         }
     }
 
+    /** Shows final sync failure dialog. */
     private void showSyncFailureDialog() {
         String item = (currentSyncType == SyncType.SCHEDULE) ? "schedule" : "clock settings";
         dismissActiveDialog();
@@ -682,6 +764,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
                 .show();
     }
     
+    /** {@inheritDoc} */
     @Override public void onScheduleWritten() { 
         runOnUiThread(() -> { 
             if (isFinishing() || isDestroyed()) return;
@@ -697,6 +780,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         }); 
     }
     
+    /** {@inheritDoc} */
     @Override public void onSyncControlRead(boolean e) {
         runOnUiThread(() -> {
             if (isFinishing() || isDestroyed()) return;
@@ -710,6 +794,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         });
     }
 
+    /** {@inheritDoc} */
     @Override public void onSyncControlWritten() {
         runOnUiThread(() -> {
             if (isFinishing() || isDestroyed()) return;
@@ -722,6 +807,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         });
     }
     
+    /** {@inheritDoc} */
     @Override public void onRtcRead(int[] dt) {
         runOnUiThread(() -> {
             if (isFinishing() || isDestroyed()) return;
@@ -731,7 +817,6 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
             }
             java.util.Calendar devTime = java.util.Calendar.getInstance();
             devTime.clear();
-            // Protocol: [year][month][day][dow][hour][min][sec]
             devTime.set(java.util.Calendar.YEAR, 2000 + dt[0]);
             devTime.set(java.util.Calendar.MONTH, dt[1] - 1);
             devTime.set(java.util.Calendar.DAY_OF_MONTH, dt[2]);
@@ -744,7 +829,6 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
             now.set(java.util.Calendar.MILLISECOND, 0);
             
             if (currentSyncType == SyncType.CLOCK) {
-                // Verify clock was updated (within 30 seconds of target)
                 long diff = Math.abs(pendingClockSyncTime - devTime.getTimeInMillis());
                 if (diff < 30 * 1000) {
                     setSyncStatus("Clock verified ✓", false);
@@ -777,6 +861,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         });
     }
 
+    /** Prompts the user to update the machine clock if drift is detected. */
     private void promptRtcSync() {
         if (isFinishing() || isDestroyed()) return;
         dismissActiveDialog();
@@ -784,6 +869,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
                 .setPositiveButton("OK", (d, w) -> startClockSync()).setNegativeButton("Later", null).show();
     }
 
+    /** {@inheritDoc} */
     @Override public void onRtcWritten() { 
         runOnUiThread(() -> { 
             if (isFinishing() || isDestroyed()) return;
@@ -799,6 +885,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         }); 
     }
 
+    /** {@inheritDoc} */
     @Override
     public void onBrewTempRead(double temp) {
         runOnUiThread(() -> {
@@ -808,6 +895,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         });
     }
 
+    /** {@inheritDoc} */
     @Override
     public void onSteamTempRead(double temp) {
         runOnUiThread(() -> {
@@ -817,6 +905,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         });
     }
 
+    /** {@inheritDoc} */
     @Override public void onError(String msg) { 
         runOnUiThread(() -> { 
             if (isFinishing() || isDestroyed()) return;
@@ -826,6 +915,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         }); 
     }
 
+    /** Closes any visible dialogs to prevent memory leaks. */
     private void dismissActiveDialog() {
         if (activeDialog != null && activeDialog.isShowing()) {
             activeDialog.dismiss();
@@ -833,6 +923,9 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         activeDialog = null;
     }
 
+    /**
+     * Performs final cleanup when activity is destroyed.
+     */
     @Override
     protected void onDestroy() {
         mainHandler.removeCallbacks(pollTempsRunnable);
@@ -845,6 +938,10 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
     }
 
     private final android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    
+    /**
+     * Polling mechanism to periodically refresh boiler temperatures.
+     */
     private final Runnable pollTempsRunnable = new Runnable() {
         @Override
         public void run() {
