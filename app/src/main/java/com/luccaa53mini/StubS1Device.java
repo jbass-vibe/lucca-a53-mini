@@ -8,6 +8,7 @@ import java.util.TimeZone;
 
 /**
  * StubS1Device — developer test mode implementation of IS1Device.
+ * Simulates BLE hardware behavior for rapid UI development and testing.
  */
 public class StubS1Device implements IS1Device {
 
@@ -29,13 +30,20 @@ public class StubS1Device implements IS1Device {
     private boolean pendingWriteError = false;
     private boolean pendingVerifyFail = false;
 
+    /** {@inheritDoc} */
     @Override public void setListener(BleManager.Listener l) { this.listener = l; }
+    /** {@inheritDoc} */
     @Override public BleManager.State getState() { return state; }
+    /** {@inheritDoc} */
     @Override public boolean isConnected() { return state == BleManager.State.CONNECTED; }
+    /** {@inheritDoc} */
     @Override public String getDeviceLabel() { return "LUCCA STUB  [DEV MODE]"; }
+    /** {@inheritDoc} */
     @Override public boolean isStub() { return true; }
+    /** {@inheritDoc} */
     @Override public boolean supportsTemperature() { return true; }
 
+    /** {@inheritDoc} */
     @Override public void startScan() {
         state = BleManager.State.SCANNING;
         post(() -> { if (listener != null) listener.onScanStarted(); });
@@ -46,19 +54,25 @@ public class StubS1Device implements IS1Device {
         });
     }
 
+    /** {@inheritDoc} */
     @Override public void stopScan() {
         handler.removeCallbacksAndMessages(null);
         if (state == BleManager.State.SCANNING) state = BleManager.State.IDLE;
     }
 
+    /** {@inheritDoc} */
     @Override public void reconnect() { state = BleManager.State.IDLE; startScan(); }
 
+    /** {@inheritDoc} */
     @Override public void disconnect() {
         handler.removeCallbacksAndMessages(null);
         state = BleManager.State.DISCONNECTED;
         if (listener != null) listener.onDisconnected();
     }
 
+    /**
+     * Internal simulation of the GATT connection handshake.
+     */
     private void simulateConnect() {
         state = BleManager.State.CONNECTING;
         postDelay(DELAY_CONNECTING, () -> {
@@ -71,6 +85,7 @@ public class StubS1Device implements IS1Device {
         });
     }
 
+    /** {@inheritDoc} */
     @Override
     public void syncSchedule(S1Schedule schedule, TimeZone tz) {
         postDelay(DELAY_GATT_OP, () -> {
@@ -101,6 +116,7 @@ public class StubS1Device implements IS1Device {
         });
     }
 
+    /** {@inheritDoc} */
     @Override
     public void writeScheduleOnly(S1Schedule schedule) {
         postDelay(DELAY_WRITE_SCHEDULE, () -> {
@@ -109,6 +125,7 @@ public class StubS1Device implements IS1Device {
         });
     }
 
+    /** {@inheritDoc} */
     @Override
     public void readSchedule() {
         postDelay(DELAY_GATT_OP, () -> {
@@ -121,6 +138,7 @@ public class StubS1Device implements IS1Device {
         });
     }
 
+    /** {@inheritDoc} */
     @Override
     public void syncRtc(TimeZone tz) {
         postDelay(DELAY_GATT_OP, () -> {
@@ -130,11 +148,13 @@ public class StubS1Device implements IS1Device {
         });
     }
 
+    /** {@inheritDoc} */
     @Override
     public void readSyncControl() {
         postDelay(DELAY_GATT_OP, () -> { if (listener != null) listener.onSyncControlRead(schedulerEnabled); });
     }
 
+    /** {@inheritDoc} */
     @Override
     public void writeSyncControl(boolean enabled) {
         postDelay(DELAY_GATT_OP, () -> {
@@ -143,8 +163,10 @@ public class StubS1Device implements IS1Device {
         });
     }
 
+    /** {@inheritDoc} */
     @Override public void readRtc() { postDelay(DELAY_GATT_OP, () -> { if (listener != null) listener.onRtcRead(buildRtcResponse()); }); }
 
+    /** {@inheritDoc} */
     @Override
     public void readBrewBoiler() {
         postDelay(DELAY_GATT_OP, () -> {
@@ -152,6 +174,7 @@ public class StubS1Device implements IS1Device {
         });
     }
 
+    /** {@inheritDoc} */
     @Override
     public void readSteamBoiler() {
         postDelay(DELAY_GATT_OP, () -> {
@@ -161,11 +184,19 @@ public class StubS1Device implements IS1Device {
 
     // ── Fault injection ──────────────────────────────────────────────────────
 
+    /** Triggers a GATT write error on the next schedule write. */
     public void injectWriteError() { pendingWriteError = true; }
+    
+    /** Simulates a Bluetooth disconnection after the next sync. */
     public void injectConnectionDrop() { pendingDropConnection = true; }
+    
+    /** Forces the next schedule read to return corrupt data (failed verification). */
     public void injectVerifyFail() { pendingVerifyFail = true; }
+    
+    /** Clears any pending verification failures. */
     public void clearVerifyFail() { pendingVerifyFail = false; }
 
+    /** Populates the internal memory with random schedule data. */
     public void injectCorruptSchedule() {
         storedSchedule = new S1Schedule();
         for (int day = 0; day < S1Schedule.DAYS; day++) {
@@ -182,15 +213,16 @@ public class StubS1Device implements IS1Device {
         }
     }
 
+    /** Simulates clock drift on the stub device. */
     public void injectRtcDrift(int minutes) { rtcOffsetMs += (long) minutes * 60_000L; }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
+    /** Generates a dummy RTC array based on current system time + offset. */
     private int[] buildRtcResponse() {
         long now = System.currentTimeMillis() + rtcOffsetMs;
         Calendar cal = Calendar.getInstance();
         cal.setTimeInMillis(now);
-        // Match new protocol: [Year, Month, Day, DOW, Hour, Minute, Second]
         return new int[]{
                 cal.get(Calendar.YEAR) - 2000,
                 cal.get(Calendar.MONTH) + 1,
@@ -202,12 +234,14 @@ public class StubS1Device implements IS1Device {
         };
     }
 
+    /** Resets the drift offset to 0. */
     private void applyRtcSync(TimeZone tz) {
         if (tz != null) {
             rtcOffsetMs = 0;
         }
     }
 
+    /** Builds a default sample schedule for the stub. */
     private static S1Schedule buildSampleSchedule() {
         S1Schedule s = new S1Schedule();
         for (int d = 0; d < 5; d++) {
@@ -218,6 +252,7 @@ public class StubS1Device implements IS1Device {
         return s;
     }
 
+    /** Internal helper to simulate spontaneous disconnects. */
     private void maybeDropConnection() {
         if (!pendingDropConnection) return;
         pendingDropConnection = false;

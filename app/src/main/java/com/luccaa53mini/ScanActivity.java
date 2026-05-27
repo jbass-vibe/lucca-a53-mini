@@ -17,6 +17,11 @@ import androidx.appcompat.widget.SwitchCompat;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * The initial activity that handles Bluetooth scanning and connection to the Lucca S1 device.
+ * It manages permissions, Bluetooth adapter state, and transitions to {@link ScheduleActivity}
+ * once a connection is established.
+ */
 public class ScanActivity extends AppCompatActivity implements BleManager.Listener {
 
     private IS1Device device;
@@ -44,6 +49,16 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
     private boolean isFirstRun = true;
 
     // ── Lifecycle ────────────────────────────────────────────────────────────
+
+    /**
+     * Called when the activity is first created.
+     * Initializes the UI components and prepares the device implementation.
+     *
+     * @param savedInstanceState If the activity is being re-initialized after
+     *                           previously being shut down then this Bundle contains the data it most
+     *                           recently supplied in {@link #onSaveInstanceState}.
+     *                           <b>Note: Otherwise it is null.</b>
+     */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -63,6 +78,10 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
         }
     }
 
+    /**
+     * Called when the activity will start interacting with the user.
+     * Ensures the device is disconnected and resets the UI state.
+     */
     @Override
     protected void onResume() {
         super.onResume();
@@ -80,6 +99,10 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
         setState(UiState.IDLE);
     }
 
+    /**
+     * Perform any final cleanup before an activity is destroyed.
+     * Stops any ongoing scans and cleans up handlers.
+     */
     @Override
     protected void onDestroy() {
         if (device != null) {
@@ -90,6 +113,9 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
         super.onDestroy();
     }
 
+    /**
+     * Binds UI components from the layout to local variables.
+     */
     private void bindViews() {
         iconBle      = findViewById(R.id.iconBle);
         tvTitle      = findViewById(R.id.tvTitle);
@@ -106,6 +132,9 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
         swDevMode    = findViewById(R.id.swDevMode);
     }
 
+    /**
+     * Configures the developer mode UI based on build type and user preference.
+     */
     private void applyDevModeUi() {
         if (!App.isDebuggable()) {
             devModeContainer.setVisibility(View.GONE);
@@ -128,13 +157,29 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
     }
 
     // ── UI State machine ─────────────────────────────────────────────────────
+
+    /**
+     * Internal states for the scanning and connection process.
+     */
     private enum UiState {
         IDLE, SCANNING, DEVICE_FOUND, CONNECTING, CONNECTED,
         TIMEOUT, PERMISSION_DENIED, BT_DISABLED, ERROR
     }
 
+    /**
+     * Simplified helper to set the UI state without extra parameters.
+     *
+     * @param s The target UI state.
+     */
     private void setState(UiState s) { setState(s, null, null); }
 
+    /**
+     * Updates the UI elements based on the current scanning or connection state.
+     *
+     * @param s          The target UI state.
+     * @param deviceName Optional name of the found device.
+     * @param deviceAddr Optional MAC address of the found device.
+     */
     private void setState(UiState s, String deviceName, String deviceAddr) {
         // addLog removed from here to reduce verbosity
         switch (s) {
@@ -274,6 +319,12 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
         }
     }
 
+    /**
+     * Updates the main BLE icon and optionally starts a pulsing animation.
+     *
+     * @param resId The drawable resource ID.
+     * @param pulse True to start the pulse animation, false to stop.
+     */
     private void setIcon(int resId, boolean pulse) {
         iconBle.setImageResource(resId);
         if (pulse) {
@@ -286,10 +337,19 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
     }
 
     // ── Log helper ────────────────────────────────────────────────────────────
+
+    /**
+     * Removes all entries from the connection log.
+     */
     private void clearLogs() {
         logContainer.removeAllViews();
     }
 
+    /**
+     * Adds a new entry to the connection log UI.
+     *
+     * @param message The text to display in the log.
+     */
     private void addLog(String message) {
         tvLogHeader.setVisibility(View.VISIBLE);
         logContainer.setVisibility(View.VISIBLE);
@@ -304,6 +364,10 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
     }
 
     // ── Permissions ──────────────────────────────────────────────────────────
+
+    /**
+     * Orchestrates the permission check and Bluetooth adapter verification before scanning.
+     */
     private void checkPermissionsAndScan() {
         if (App.devMode) { device.startScan(); return; }
 
@@ -320,6 +384,11 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
         device.startScan();
     }
 
+    /**
+     * Checks if all required Bluetooth and location permissions are granted.
+     *
+     * @return True if all required permissions are granted.
+     */
     private boolean hasPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             return checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN)   == PackageManager.PERMISSION_GRANTED
@@ -328,6 +397,9 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
         return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
     }
 
+    /**
+     * Triggers the system permission request dialog for needed Bluetooth permissions.
+     */
     private void requestPermissions() {
         List<String> perms = new ArrayList<>();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -338,6 +410,13 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
         ActivityCompat.requestPermissions(this, perms.toArray(new String[0]), PERM_REQUEST);
     }
 
+    /**
+     * Callback for the result from requesting permissions.
+     *
+     * @param req          The request code passed in {@link #requestPermissions()}.
+     * @param perms        The requested permissions.
+     * @param results      The grant results for the corresponding permissions.
+     */
     @Override
     public void onRequestPermissionsResult(int req, @NonNull String[] perms, @NonNull int[] results) {
         super.onRequestPermissionsResult(req, perms, results);
@@ -350,45 +429,66 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
     }
 
     // ── BleManager.Listener ──────────────────────────────────────────────────
+
+    /** {@inheritDoc} */
     @Override public void onScanStarted()  { addLog("Searching for machines..."); setState(UiState.SCANNING); }
 
+    /** {@inheritDoc} */
     @Override public void onDeviceFound(String name, String address) {
         addLog("Machine found!");
         setState(UiState.DEVICE_FOUND, name, address);
     }
 
+    /** {@inheritDoc} */
     @Override public void onScanTimeout()  { addLog("No machine found nearby."); setState(UiState.TIMEOUT); }
 
+    /** {@inheritDoc} */
     @Override public void onScanFailed(int code) {
         addLog("Search failed.");
         setState(UiState.ERROR, "BLE scan failed (code " + code + ")", null);
     }
 
+    /** {@inheritDoc} */
     @Override public void onConnecting()   { addLog("Connecting to machine..."); setState(UiState.CONNECTING); }
+
+    /** {@inheritDoc} */
     @Override public void onConnected()    { addLog("Connected!"); setState(UiState.CONNECTED); }
 
+    /** {@inheritDoc} */
     @Override public void onServicesDiscovered() {
         App.device = device;
         startActivity(new Intent(this, ScheduleActivity.class));
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
     }
 
+    /** {@inheritDoc} */
     @Override public void onDisconnected() {
         mainHandler.post(() -> setState(UiState.IDLE));
     }
 
+    /** {@inheritDoc} */
     @Override public void onConnectionFailed(String reason) {
         setState(UiState.ERROR, reason, null);
     }
 
+    /** {@inheritDoc} */
     @Override public void onScheduleRead(byte[] raw)   {}
+    /** {@inheritDoc} */
     @Override public void onScheduleWritten()          {}
+    /** {@inheritDoc} */
     @Override public void onSyncControlRead(boolean e) {}
+    /** {@inheritDoc} */
     @Override public void onSyncControlWritten()       {}
+    /** {@inheritDoc} */
     @Override public void onRtcRead(int[] dt)          {}
+    /** {@inheritDoc} */
     @Override public void onRtcWritten()               {}
+    /** {@inheritDoc} */
     @Override public void onBrewTempRead(double temp)  {}
+    /** {@inheritDoc} */
     @Override public void onSteamTempRead(double temp) {}
+
+    /** {@inheritDoc} */
     @Override public void onError(String msg) {
         runOnUiThread(() -> Toast.makeText(this, msg, Toast.LENGTH_SHORT).show());
     }

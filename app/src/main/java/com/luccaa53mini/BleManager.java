@@ -14,33 +14,51 @@ import java.util.*;
 
 /**
  * BleManager: implements the full S1 Timer BLE protocol.
- *
+ * <p>
  * Custom Service UUID : ACAB0001-67F5-479E-8711-B3B99198CE6C
  * Sync Control        : ACAB0002  Handle 0x0010  R/W  1 byte
  * Weekly Schedule     : ACAB0003  Handle 0x0013  R/W  84 bytes (variable on partial write)
  * RTC Set             : ACAB0004  Handle 0x0016  R/W  7 bytes
  * RTC Read            : ACAB0005  Handle 0x0019  R    7 bytes
+ * Brew Temperature    : ACAB0006  R
+ * Steam Temperature   : ACAB0007  R
+ * </p>
  */
 public class BleManager implements IS1Device {
 
     private static final String TAG = "BleManager";
 
     // ── UUIDs ───────────────────────────────────────────────────────────────
+    
+    /** The main S1 Service UUID. */
     public static final UUID SERVICE_UUID =
             UUID.fromString("ACAB0001-67F5-479E-8711-B3B99198CE6C");
+    
+    /** Characteristic for enabling/disabling the scheduler. */
     public static final UUID CHAR_SYNC_CONTROL =
             UUID.fromString("ACAB0002-67F5-479E-8711-B3B99198CE6C");
+    
+    /** Characteristic for reading/writing the 84-byte weekly schedule. */
     public static final UUID CHAR_SCHEDULE =
             UUID.fromString("ACAB0003-67F5-479E-8711-B3B99198CE6C");
+    
+    /** Characteristic for setting the device Real-Time Clock. */
     public static final UUID CHAR_RTC_SET =
             UUID.fromString("ACAB0004-67F5-479E-8711-B3B99198CE6C");
+    
+    /** Characteristic for reading the device Real-Time Clock. */
     public static final UUID CHAR_RTC_READ =
             UUID.fromString("ACAB0005-67F5-479E-8711-B3B99198CE6C");
 
+    /** Service UUID for temperature readings (v2.x firmware). */
     public static final UUID SERVICE_TEMP_UUID =
             UUID.fromString("ACAB0001-67F5-479E-8711-B3B99198CE6C");
+    
+    /** Characteristic for reading brew boiler temperature. */
     public static final UUID CHAR_BREW_TEMP =
             UUID.fromString("ACAB0006-67F5-479E-8711-B3B99198CE6C");
+    
+    /** Characteristic for reading steam boiler temperature. */
     public static final UUID CHAR_STEAM_TEMP =
             UUID.fromString("ACAB0007-67F5-479E-8711-B3B99198CE6C");
 
@@ -49,31 +67,75 @@ public class BleManager implements IS1Device {
     private static final long OP_TIMEOUT_MS      =  5_000;
 
     // ── Callback interface ──────────────────────────────────────────────────
+
+    /**
+     * Interface for observing BLE events and protocol data.
+     */
     public interface Listener {
+        /** Called when a Bluetooth scan starts. */
         void onScanStarted();
-        void onDeviceFound(String name, String address);      // Target found
+        
+        /**
+         * Called when a target S1 device is discovered.
+         * @param name    The device name.
+         * @param address The Bluetooth MAC address.
+         */
+        void onDeviceFound(String name, String address);
+        
+        /** Called when the scan exceeds SCAN_TIMEOUT_MS. */
         void onScanTimeout();
+        
+        /** Called when a Bluetooth scan fails. */
         void onScanFailed(int errorCode);
+        
+        /** Called when GATT connection is initiated. */
         void onConnecting();
+        
+        /** Called when GATT connection is physically established. */
         void onConnected();
+        
+        /** Called when GATT services and characteristics are parsed. */
         void onServicesDiscovered();
+        
+        /** Called when the device disconnects or link is lost. */
         void onDisconnected();
+        
+        /** Called when connection cannot be established. */
         void onConnectionFailed(String reason);
 
-        void onScheduleRead(byte[] raw84);       // raw bytes from device
+        /** Called when the 84-byte schedule is read. */
+        void onScheduleRead(byte[] raw84);
+        
+        /** Called when a schedule write is confirmed. */
         void onScheduleWritten();
+        
+        /** Called when the sync control bit is read. */
         void onSyncControlRead(boolean enabled);
+        
+        /** Called when a sync control write is confirmed. */
         void onSyncControlWritten();
-        void onRtcRead(int[] dateTime);           // [day,month,year,sub,hour,min,sec]
+        
+        /** Called when the device RTC is read. */
+        void onRtcRead(int[] dateTime);
+        
+        /** Called when RTC write is confirmed. */
         void onRtcWritten();
 
+        /** Called when brew temperature is read. */
         void onBrewTempRead(double temp);
+        
+        /** Called when steam temperature is read. */
         void onSteamTempRead(double temp);
 
+        /** Called when a protocol or GATT error occurs. */
         void onError(String message);
     }
 
     // ── State ───────────────────────────────────────────────────────────────
+
+    /**
+     * Internal manager states.
+     */
     public enum State { IDLE, SCANNING, CONNECTING, CONNECTED, DISCONNECTED, ERROR }
 
     private State state = State.IDLE;
@@ -112,18 +174,33 @@ public class BleManager implements IS1Device {
     };
 
     // ── Construction ────────────────────────────────────────────────────────
+
+    /**
+     * Initializes the manager with the given context.
+     * @param context The application or activity context.
+     */
     public BleManager(Context context) {
         this.context = context.getApplicationContext();
         BluetoothManager bm = (BluetoothManager) context.getSystemService(Context.BLUETOOTH_SERVICE);
         if (bm != null) adapter = bm.getAdapter();
     }
 
-    public void setListener(Listener l) { this.listener = l; }
-    public State getState() { return state; }
-    public boolean isConnected() { return state == State.CONNECTED && gatt != null; }
+    /** Sets the observer listener. */
+    @Override public void setListener(Listener l) { this.listener = l; }
+    
+    /** Returns the current internal state. */
+    @Override public State getState() { return state; }
+    
+    /** Returns true if GATT is connected and active. */
+    @Override public boolean isConnected() { return state == State.CONNECTED && gatt != null; }
 
     // ── Scan ────────────────────────────────────────────────────────────────
-    public void startScan() {
+
+    /**
+     * Starts a BLE scan for S1 devices.
+     * Verifies Bluetooth adapter state before beginning.
+     */
+    @Override public void startScan() {
         if (adapter == null || !adapter.isEnabled()) {
             notifyError("Bluetooth is not enabled");
             return;
@@ -150,7 +227,10 @@ public class BleManager implements IS1Device {
         }
     }
 
-    public void stopScan() {
+    /**
+     * Stops any ongoing BLE scan.
+     */
+    @Override public void stopScan() {
         mainHandler.removeCallbacks(scanTimeoutRunnable);
         if (scanner != null) {
             try {
@@ -161,12 +241,18 @@ public class BleManager implements IS1Device {
         }
     }
 
+    /**
+     * Internal handler for scan timeout.
+     */
     private void onScanTimeout() {
         stopScan();
         state = State.IDLE;
         mainHandler.post(() -> { if (listener != null) listener.onScanTimeout(); });
     }
 
+    /**
+     * Callback for discovery of BLE devices.
+     */
     private final ScanCallback scanCallback = new ScanCallback() {
         @Override
         public void onScanResult(int callbackType, ScanResult result) {
@@ -242,6 +328,10 @@ public class BleManager implements IS1Device {
     // ── Connect ─────────────────────────────────────────────────────────────
     private boolean isConnectingWithAuto = false;
 
+    /**
+     * Initiates a GATT connection to the specified device.
+     * @param device The target BluetoothDevice.
+     */
     public void connectTo(BluetoothDevice device) {
         if (gatt != null) {
             Log.d(TAG, "Closing existing GATT before new connection");
@@ -255,7 +345,7 @@ public class BleManager implements IS1Device {
         }
         state = State.CONNECTING;
         isConnectingWithAuto = false;
-        retryCount3E = 0; // NEW: Reset retry counter on explicit connection attempt
+        retryCount3E = 0; 
         mainHandler.post(() -> { if (listener != null) listener.onConnecting(); });
         mainHandler.removeCallbacks(connectTimeoutRunnable);
         mainHandler.postDelayed(connectTimeoutRunnable, CONNECT_TIMEOUT_MS);
@@ -277,12 +367,16 @@ public class BleManager implements IS1Device {
         }, 1200); // Increased settlement delay
     }
 
-    public void reconnect() {
+    /** Retries connection to the last found device. */
+    @Override public void reconnect() {
         if (targetDevice != null) connectTo(targetDevice);
         else startScan();
     }
 
-    public void disconnect() {
+    /**
+     * Closes the GATT connection and releases resources.
+     */
+    @Override public void disconnect() {
         mainHandler.removeCallbacks(connectTimeoutRunnable);
         opQueue.clear();
         opInProgress = false;
@@ -299,6 +393,9 @@ public class BleManager implements IS1Device {
         mainHandler.post(() -> { if (listener != null) listener.onDisconnected(); });
     }
 
+    /**
+     * Helper to clean up state after a failed connection attempt.
+     */
     private void failConnection(String reason) {
         if (gatt != null) {
             try {
@@ -312,6 +409,10 @@ public class BleManager implements IS1Device {
     }
 
     // ── GATT Callback ────────────────────────────────────────────────────────
+
+    /**
+     * Implementation of BluetoothGattCallback to handle BLE hardware events.
+     */
     private final BluetoothGattCallback gattCallback = new BluetoothGattCallback() {
 
         @Override
@@ -354,7 +455,7 @@ public class BleManager implements IS1Device {
                     return;
                 }
 
-                // NEW: Handle 0x3E (62) - Connection Failed to be Established
+                // Handle 0x3E (62) - Connection Failed to be Established
                 if (status == 62 && retryCount3E < 3) {
                     retryCount3E++;
                     if (App.isDebuggable()) Log.w(TAG, "Connection failed with 0x3E. Retrying (" + retryCount3E + "/3)...");
@@ -379,7 +480,6 @@ public class BleManager implements IS1Device {
                     gatt = null;
                 }
 
-                // NEW: Check if it was a host-initiated normal disconnect (0x16 / 22)
                 boolean wasConnected = (state == State.CONNECTED);
                 state = State.DISCONNECTED;
 
@@ -437,15 +537,17 @@ public class BleManager implements IS1Device {
                 }
                 Log.d(TAG, "--- RECURSIVE CHARACTERISTIC DISCOVERY END ---");
 
-                // Only fail if critical characteristics are missing
+                if (App.isDebuggable()) {
+                    Log.d(TAG, "Mapping results: Sync=" + (charSyncControl != null) +
+                            ", Schedule=" + (charSchedule != null) +
+                            ", Brew=" + (charBrewTemp != null) +
+                            ", Steam=" + (charSteamTemp != null));
+                }
+
                 if (charSyncControl == null || charSchedule == null) {
                     Log.e(TAG, "Mandatory S1 characteristics (0002/0003) missing!");
                     failConnection("Required machine characteristics not found");
                     return;
-                }
-
-                if (firmwareSupportsTemp && (charBrewTemp == null || charSteamTemp == null)) {
-                    Log.w(TAG, "Device reports v2.x support but temperature characteristics were not found!");
                 }
 
                 if (listener != null) listener.onServicesDiscovered();
@@ -542,6 +644,12 @@ public class BleManager implements IS1Device {
         }
     };
 
+    /**
+     * Translates GATT status codes into human-friendly error messages.
+     * @param status The status code.
+     * @param opType The operation type (e.g., "read", "write").
+     * @return A localized error string.
+     */
     private String getHumanReadableError(int status, String opType) {
         String msg;
         switch (status) {
@@ -577,11 +685,19 @@ public class BleManager implements IS1Device {
     }
 
     // ── Operation queue helpers ──────────────────────────────────────────────
+    
+    /**
+     * Adds an operation to the sequential GATT queue.
+     * @param op The Runnable operation.
+     */
     private void enqueue(Runnable op) {
         opQueue.add(op);
         if (!opInProgress) drainQueue();
     }
 
+    /**
+     * Executes the next operation in the queue if none is in progress.
+     */
     private void drainQueue() {
         if (opInProgress || opQueue.isEmpty() || gatt == null) return;
         opInProgress = true;
@@ -592,63 +708,75 @@ public class BleManager implements IS1Device {
 
     // ── Public protocol operations ───────────────────────────────────────────
 
-    /** Full sync sequence: reset sync → enable sync → write schedule → write RTC */
-    public void syncSchedule(S1Schedule schedule, java.util.TimeZone tz) {
-        enqueue(() -> writeChar(charSyncControl, new byte[]{0x00}));
-        enqueue(() -> writeChar(charSyncControl, new byte[]{0x01}));
-        enqueue(() -> writeChar(charSchedule, schedule.toBytes()));
-        // Note: We skip the RTC update here to avoid confusing status messages in UI
-        // and to keep the schedule sync atomic.
-    }
-
-    /** Write the schedule without touching the RTC */
-    public void writeScheduleOnly(S1Schedule schedule) {
+    /**
+     * Performs a full atomic synchronization of the schedule.
+     * @param schedule The schedule to write.
+     * @param tz       The target timezone.
+     */
+    @Override public void syncSchedule(S1Schedule schedule, java.util.TimeZone tz) {
         enqueue(() -> writeChar(charSyncControl, new byte[]{0x00}));
         enqueue(() -> writeChar(charSyncControl, new byte[]{0x01}));
         enqueue(() -> writeChar(charSchedule, schedule.toBytes()));
     }
 
-    /** Read the current schedule from device */
-    public void readSchedule() {
+    /**
+     * Writes the schedule without resetting sync control.
+     * @param schedule The schedule to write.
+     */
+    @Override public void writeScheduleOnly(S1Schedule schedule) {
+        enqueue(() -> writeChar(charSyncControl, new byte[]{0x00}));
+        enqueue(() -> writeChar(charSyncControl, new byte[]{0x01}));
+        enqueue(() -> writeChar(charSchedule, schedule.toBytes()));
+    }
+
+    /** Reads the current 84-byte schedule. */
+    @Override public void readSchedule() {
         enqueue(() -> readChar(charSchedule));
     }
 
-    /** Sync only the RTC to current phone time in the given timezone */
-    public void syncRtc(java.util.TimeZone tz) {
+    /**
+     * Synchronizes the machine RTC with the phone's current time.
+     * @param tz The target timezone.
+     */
+    @Override public void syncRtc(java.util.TimeZone tz) {
         enqueue(() -> writeChar(charRtcSet, buildRtcPayload(tz)));
         enqueue(() -> readChar(charRtcRead));
     }
 
-    /** Read only the current sync control state */
-    @Override
-    public void readSyncControl() {
+    /** Reads the sync control state. */
+    @Override public void readSyncControl() {
         enqueue(() -> readChar(charSyncControl));
     }
 
-    /** Write only the sync control state (enable/disable scheduler) */
-    @Override
-    public void writeSyncControl(boolean enabled) {
+    /**
+     * Writes the sync control bit.
+     * @param enabled True to enable the scheduler.
+     */
+    @Override public void writeSyncControl(boolean enabled) {
         enqueue(() -> writeChar(charSyncControl, new byte[]{enabled ? (byte) 0x01 : (byte) 0x00}));
     }
 
-    /** Read current device RTC */
-    public void readRtc() {
+    /** Reads the device RTC. */
+    @Override public void readRtc() {
         enqueue(() -> readChar(charRtcRead));
     }
 
-    /** Read brew boiler temperature */
-    @Override
-    public void readBrewBoiler() {
+    /** Reads the brew boiler temperature. */
+    @Override public void readBrewBoiler() {
         enqueue(() -> readChar(charBrewTemp));
     }
 
-    /** Read steam boiler temperature */
-    @Override
-    public void readSteamBoiler() {
+    /** Reads the steam boiler temperature. */
+    @Override public void readSteamBoiler() {
         enqueue(() -> readChar(charSteamTemp));
     }
 
     // ── Low-level GATT helpers ───────────────────────────────────────────────
+    
+    /**
+     * Internal helper to trigger a GATT read.
+     * @param c The characteristic to read.
+     */
     private void readChar(BluetoothGattCharacteristic c) {
         if (gatt == null || c == null) { opInProgress = false; drainQueue(); return; }
         if (App.isDebuggable()) Log.d(TAG, "BLE QUEUE -> READ: " + c.getUuid());
@@ -665,6 +793,11 @@ public class BleManager implements IS1Device {
         }
     }
 
+    /**
+     * Internal helper to trigger a GATT write.
+     * @param c     The characteristic to write.
+     * @param value The byte array value.
+     */
     private void writeChar(BluetoothGattCharacteristic c, byte[] value) {
         if (gatt == null || c == null) { opInProgress = false; drainQueue(); return; }
         if (App.isDebuggable()) Log.d(TAG, "BLE QUEUE -> WRITE: " + c.getUuid() + " val: " + Arrays.toString(value));
@@ -691,11 +824,12 @@ public class BleManager implements IS1Device {
     }
 
     // ── RTC encoding ────────────────────────────────────────────────────────
+    
     /**
      * Build the 7-byte RTC payload for the S1 device.
      * Format: [year_offset][month][day][dow][hour][min][sec]
-     * year_offset is observed as calendar_year - 2000 (e.g., 2026 -> 26).
-     * dow: 1=Sun, 2=Mon...7=Sat (Standard Java/Android Calendar values)
+     * @param tz The target timezone.
+     * @return The 7-byte payload.
      */
     public static byte[] buildRtcPayload(java.util.TimeZone tz) {
         java.util.Calendar cal = java.util.Calendar.getInstance(tz);
@@ -714,6 +848,11 @@ public class BleManager implements IS1Device {
         };
     }
 
+    /**
+     * Parses the 7-byte RTC response into integers.
+     * @param b The raw bytes.
+     * @return Array of [year, month, day, dow, hour, min, sec].
+     */
     public static int[] parseRtc(byte[] b) {
         if (b == null || b.length < 7) return new int[7];
         return new int[]{
@@ -723,17 +862,22 @@ public class BleManager implements IS1Device {
     }
 
     /**
-     * Parse 16-bit signed little-endian temperature from 4-byte buffer.
+     * Parse 16-bit signed little-endian temperature from raw buffer.
      * Bytes 0-1: Temperature (value / 10.0)
+     * @param b Raw GATT value.
+     * @return Temperature in Celsius.
      */
     private static double parseTemperature(byte[] b) {
         if (b == null || b.length < 2) return 0.0;
-        // 16-bit signed little-endian
         short raw = (short) ((b[0] & 0xFF) | ((b[1] & 0xFF) << 8));
         return raw / 10.0;
     }
 
-    /** Expand a variable-length schedule response to the canonical 84 bytes */
+    /** 
+     * Expand a variable-length schedule response to the canonical 84 bytes.
+     * @param raw The raw GATT value.
+     * @return Padded 84-byte array.
+     */
     private static byte[] expandSchedule(byte[] raw) {
         byte[] full = new byte[84];
         if (raw != null) System.arraycopy(raw, 0, full, 0, Math.min(raw.length, 84));
@@ -741,13 +885,21 @@ public class BleManager implements IS1Device {
     }
 
     // ── IS1Device metadata ───────────────────────────────────────────────────
+    
+    /** Returns the device display label (MAC address). */
     @Override public String getDeviceLabel() {
         return targetDevice != null ? targetDevice.getAddress() : "Lucca Espresso Machine";
     }
+    
+    /** Returns false. */
     @Override public boolean isStub() { return false; }
+    
+    /** Returns true if firmware version matches v2.x or later. */
     @Override public boolean supportsTemperature() { return firmwareSupportsTemp; }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
+    
+    /** Logs an error and notifies the listener. */
     private void notifyError(String msg) {
         Log.e(TAG, msg);
         mainHandler.post(() -> { if (listener != null) listener.onError(msg); });
