@@ -144,8 +144,8 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
                 tvSubtitle.setText(App.devMode
                         ? "Developer mode active. Tap Start to launch the stub."
                         : getString(R.string.state_idle_subtitle));
-                tvDeviceInfo.setVisibility(View.GONE);
-                spinner.setVisibility(View.GONE);
+                tvDeviceInfo.setVisibility(View.INVISIBLE);
+                spinner.setVisibility(View.INVISIBLE);
                 btnPrimary.setText(R.string.btn_start_scan);
                 btnPrimary.setVisibility(View.VISIBLE);
                 btnPrimary.setOnClickListener(v -> {
@@ -163,11 +163,11 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
                 tvSubtitle.setText(App.devMode
                         ? "Simulating BLE scan for S1 device."
                         : getString(R.string.state_scanning_subtitle));
-                tvDeviceInfo.setVisibility(View.GONE);
+                tvDeviceInfo.setVisibility(View.INVISIBLE);
                 spinner.setVisibility(View.VISIBLE);
                 btnPrimary.setVisibility(View.GONE);
                 btnCancel.setVisibility(View.VISIBLE);
-                btnCancel.setText("STOP SCANNING");
+                btnCancel.setText(R.string.btn_stop_scanning);
                 btnCancel.setOnClickListener(v -> {
                     addLog("Scan stopped by user.");
                     device.stopScan();
@@ -181,13 +181,13 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
             case DEVICE_FOUND:
                 setIcon(R.drawable.ic_ble_found, true);
                 tvTitle.setText(App.devMode ? "Stub device found" : getString(R.string.state_found));
-                tvSubtitle.setText("Connecting automatically…");
+                tvSubtitle.setText(R.string.state_connecting_auto);
                 tvDeviceInfo.setVisibility(View.VISIBLE);
                 tvDeviceInfo.setText(String.format("%s\n%s", deviceName, deviceAddr));
                 spinner.setVisibility(View.VISIBLE);
                 btnPrimary.setVisibility(View.GONE);
                 btnCancel.setVisibility(View.VISIBLE);
-                btnCancel.setText("CANCEL");
+                btnCancel.setText(R.string.btn_cancel);
                 btnCancel.setOnClickListener(v -> {
                     addLog("Connection cancelled by user.");
                     device.disconnect();
@@ -205,7 +205,7 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
                 spinner.setVisibility(View.VISIBLE);
                 btnPrimary.setVisibility(View.GONE);
                 btnCancel.setVisibility(View.VISIBLE);
-                btnCancel.setText("CANCEL");
+                btnCancel.setText(R.string.btn_cancel);
                 btnCancel.setOnClickListener(v -> {
                     addLog("Connection cancelled by user.");
                     device.disconnect();
@@ -216,7 +216,7 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
             case CONNECTED:
                 setIcon(R.drawable.ic_ble_connected, false);
                 tvTitle.setText(R.string.state_connected);
-                tvSubtitle.setText("Discovering services…");
+                tvSubtitle.setText(R.string.state_discovering_services);
                 spinner.setVisibility(View.VISIBLE);
                 btnPrimary.setVisibility(View.GONE);
                 btnCancel.setVisibility(View.GONE);
@@ -226,8 +226,8 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
                 setIcon(R.drawable.ic_ble_error, false);
                 tvTitle.setText(R.string.state_no_device);
                 tvSubtitle.setText(R.string.state_timeout_subtitle);
-                tvDeviceInfo.setVisibility(View.GONE);
-                spinner.setVisibility(View.GONE);
+                tvDeviceInfo.setVisibility(View.INVISIBLE);
+                spinner.setVisibility(View.INVISIBLE);
                 btnPrimary.setText(R.string.btn_try_again);
                 btnPrimary.setVisibility(View.VISIBLE);
                 btnPrimary.setOnClickListener(v -> checkPermissionsAndScan());
@@ -239,7 +239,7 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
                 setIcon(R.drawable.ic_ble_error, false);
                 tvTitle.setText(R.string.state_perm_required);
                 tvSubtitle.setText(R.string.state_perm_subtitle);
-                spinner.setVisibility(View.GONE);
+                spinner.setVisibility(View.INVISIBLE);
                 btnPrimary.setText(R.string.btn_grant_perm);
                 btnPrimary.setVisibility(View.VISIBLE);
                 btnPrimary.setOnClickListener(v -> requestPermissions());
@@ -250,7 +250,7 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
                 setIcon(R.drawable.ic_ble_error, false);
                 tvTitle.setText(R.string.state_bt_off);
                 tvSubtitle.setText(R.string.state_bt_off_subtitle);
-                spinner.setVisibility(View.GONE);
+                spinner.setVisibility(View.INVISIBLE);
                 btnPrimary.setText(R.string.btn_retry);
                 btnPrimary.setVisibility(View.VISIBLE);
                 btnPrimary.setOnClickListener(v -> checkPermissionsAndScan());
@@ -261,7 +261,7 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
                 setIcon(R.drawable.ic_ble_error, false);
                 tvTitle.setText(R.string.state_error);
                 tvSubtitle.setText(deviceName != null ? deviceName : "An unexpected error occurred.");
-                spinner.setVisibility(View.GONE);
+                spinner.setVisibility(View.INVISIBLE);
                 btnPrimary.setText(R.string.btn_retry);
                 btnPrimary.setVisibility(View.VISIBLE);
                 btnPrimary.setOnClickListener(v -> {
@@ -294,7 +294,7 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
         tvLogHeader.setVisibility(View.VISIBLE);
         logContainer.setVisibility(View.VISIBLE);
         TextView tv = new TextView(this);
-        tv.setText("› " + message);
+        tv.setText(getString(R.string.log_entry, message));
         tv.setTextSize(12f);
         tv.setTextColor(App.devMode ? 0xFF9B6FD4 : 0xFF888888);
         tv.setTypeface(android.graphics.Typeface.MONOSPACE);
@@ -374,9 +374,7 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
     }
 
     @Override public void onDisconnected() {
-        mainHandler.post(() -> {
-            setState(UiState.IDLE);
-        });
+        mainHandler.post(() -> setState(UiState.IDLE));
     }
 
     @Override public void onConnectionFailed(String reason) {
@@ -389,6 +387,8 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
     @Override public void onSyncControlWritten()       {}
     @Override public void onRtcRead(int[] dt)          {}
     @Override public void onRtcWritten()               {}
+    @Override public void onBrewTempRead(double temp)  {}
+    @Override public void onSteamTempRead(double temp) {}
     @Override public void onError(String msg) {
         runOnUiThread(() -> Toast.makeText(this, msg, Toast.LENGTH_SHORT).show());
     }

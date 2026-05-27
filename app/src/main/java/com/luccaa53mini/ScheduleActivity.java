@@ -33,9 +33,8 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
 
         @Override
         public int hashCode() {
-            int result = Objects.hash(onH, onM, offH, offM);
-            result = 31 * result + Arrays.hashCode(days);
-            return result;
+            int h = Objects.hash(onH, onM, offH, offM);
+        return 31 * h + Arrays.hashCode(days);
         }
     }
     private final List<UiEntry> uiEntries = new ArrayList<>();
@@ -51,6 +50,11 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
     private TextView   tvSyncStatus;
     private SwitchCompat swMasterSync;
     private TextView     tvMasterSwitchLabel;
+
+    // Boiler Temps
+    private View         layoutBoilerTemps;
+    private TextView     tvBrewTemp;
+    private TextView     tvSteamTemp;
 
     // Dev mode
     private View       devPanel;
@@ -97,6 +101,12 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         device.readSchedule();
         device.readRtc();
         device.readSyncControl();
+
+        if (device.supportsTemperature()) {
+            mainHandler.postDelayed(pollTempsRunnable, 1000);
+        } else {
+            layoutBoilerTemps.setVisibility(View.GONE);
+        }
     }
 
     private void bindViews() {
@@ -109,6 +119,9 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         tvSyncStatus      = findViewById(R.id.tvSyncStatus);
         swMasterSync      = findViewById(R.id.swMasterSync);
         tvMasterSwitchLabel = findViewById(R.id.tvMasterSwitchLabel);
+        layoutBoilerTemps = findViewById(R.id.layoutBoilerTemps);
+        tvBrewTemp        = findViewById(R.id.tvBrewTemp);
+        tvSteamTemp       = findViewById(R.id.tvSteamTemp);
         slotsContainer    = findViewById(R.id.slotsContainer);
         btnAddSlot        = findViewById(R.id.btnAddSlot);
         btnSaveSync       = findViewById(R.id.btnSaveSync);
@@ -144,7 +157,13 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         devPanel.findViewById(R.id.btnInjectDrop).setOnClickListener(v -> stub.injectConnectionDrop());
         devPanel.findViewById(R.id.btnInjectCorrupt).setOnClickListener(v -> { setInteractionEnabled(false); device.readSchedule(); });
         devPanel.findViewById(R.id.btnInjectRtcDrift).setOnClickListener(v -> { setInteractionEnabled(false); stub.injectRtcDrift(-7); device.readRtc(); });
-        devPanel.findViewById(R.id.btnForceRead).setOnClickListener(v -> { setInteractionEnabled(false); device.readSchedule(); device.readRtc(); });
+        devPanel.findViewById(R.id.btnForceRead).setOnClickListener(v -> {
+            setInteractionEnabled(false);
+            device.readSchedule();
+            device.readRtc();
+            device.readBrewBoiler();
+            device.readSteamBoiler();
+        });
         
         View btnFailVerify = devPanel.findViewById(R.id.btnInjectVerifyFail);
         if (btnFailVerify != null) {
@@ -164,7 +183,8 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
 
         for (int hwDay = 0; hwDay < 7; hwDay++) {
             int uiDayIndex = hwToUi[hwDay];
-            for (int s = 0; s < S1Schedule.SLOTS; s++) {
+            int s = 0;
+            while (s < S1Schedule.SLOTS) {
                 S1Schedule.TimeSlot ts = hardwareSchedule.slots[hwDay][s];
                 if (ts.enabled) {
                     String key = String.format(Locale.US, "%02d:%02d-%02d:%02d", ts.onHour, ts.onMinute, ts.offHour, ts.offMinute);
@@ -178,6 +198,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
                     }
                     entry.days[uiDayIndex] = true;
                 }
+                s++;
             }
         }
         buildCards();
@@ -368,7 +389,9 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
                 .setPositiveButton("OK", null).show();
     }
 
-    private boolean isBefore(int h1, int m1, int h2, int m2) { return (h1 * 60 + m1) < (h2 * 60 + m2); }
+    private boolean isBefore(int h1, int m1, int h2, int m2) {
+        return (h1 * 60 + m1) < (h2 * 60 + m2);
+    }
 
     private void showTimeRangeError() {
         dismissActiveDialog();
@@ -396,8 +419,13 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
     private void checkAndSyncButton() {
         boolean changed = isScheduleChanged();
         btnSaveSync.setEnabled(changed);
-        if (changed) { btnSaveSync.setText("Save & Sync  →"); btnSaveSync.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFFD4813A)); }
-        else { btnSaveSync.setText("Schedule Synced ✓"); btnSaveSync.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFF2E7D32)); }
+        if (changed) {
+            btnSaveSync.setText(R.string.btn_save_sync);
+            btnSaveSync.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFFD4813A));
+        } else {
+            btnSaveSync.setText(R.string.btn_synced);
+            btnSaveSync.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFF2E7D32));
+        }
     }
 
     private boolean isScheduleChanged() {
@@ -464,17 +492,32 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
 
     private void performGenericWrite() {
         setInteractionEnabled(false);
-        String label = (currentSyncType == SyncType.SCHEDULE) ? "schedule" : (currentSyncType == SyncType.CLOCK ? "clock" : "sync control");
+        String label;
+        switch (currentSyncType) {
+            case SCHEDULE:
+                label = "schedule";
+                break;
+            case CLOCK:
+                label = "clock";
+                break;
+            default:
+                label = "sync control";
+                break;
+        }
         setSyncStatus(String.format(Locale.US, "Syncing %s…", label), true);
-        
-        if (currentSyncType == SyncType.SCHEDULE) {
-            btnSaveSpinner.setVisibility(View.VISIBLE);
-            btnSaveSync.setAlpha(0.5f);
-            device.syncSchedule(pendingSchedule, TimeZone.getDefault());
-        } else if (currentSyncType == SyncType.CLOCK) {
-            device.syncRtc(TimeZone.getDefault());
-        } else if (currentSyncType == SyncType.MASTER_TOGGLE) {
-            device.writeSyncControl(swMasterSync.isChecked());
+
+        switch (currentSyncType) {
+            case SCHEDULE:
+                btnSaveSpinner.setVisibility(View.VISIBLE);
+                btnSaveSync.setAlpha(0.5f);
+                device.syncSchedule(pendingSchedule, TimeZone.getDefault());
+                break;
+            case CLOCK:
+                device.syncRtc(TimeZone.getDefault());
+                break;
+            case MASTER_TOGGLE:
+                device.writeSyncControl(swMasterSync.isChecked());
+                break;
         }
     }
 
@@ -519,7 +562,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
     private void updateConnectionStatus(boolean connected, boolean syncFailed) {
         if (syncFailed) {
             ivBleStatus.setImageResource(R.drawable.ic_ble_error);
-            tvConnectionLabel.setText("Sync Failed");
+            tvConnectionLabel.setText(R.string.state_sync_failed);
             tvConnectionLabel.setTextColor(0xFFE53935);
         } else {
             ivBleStatus.setImageResource(connected ? R.drawable.ic_ble_dot_green : R.drawable.ic_ble_error);
@@ -755,6 +798,25 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
             }
         }); 
     }
+
+    @Override
+    public void onBrewTempRead(double temp) {
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            layoutBoilerTemps.setVisibility(View.VISIBLE);
+            tvBrewTemp.setText(String.format(Locale.US, "B: %.1f°C", temp));
+        });
+    }
+
+    @Override
+    public void onSteamTempRead(double temp) {
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            layoutBoilerTemps.setVisibility(View.VISIBLE);
+            tvSteamTemp.setText(String.format(Locale.US, "S: %.1f°C", temp));
+        });
+    }
+
     @Override public void onError(String msg) { 
         runOnUiThread(() -> { 
             if (isFinishing() || isDestroyed()) return;
@@ -773,6 +835,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
 
     @Override
     protected void onDestroy() {
+        mainHandler.removeCallbacks(pollTempsRunnable);
         dismissActiveDialog();
         if (device != null) {
             device.setListener(null);
@@ -782,4 +845,14 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
     }
 
     private final android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable pollTempsRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (device != null && device.isConnected() && device.supportsTemperature()) {
+                device.readBrewBoiler();
+                device.readSteamBoiler();
+                mainHandler.postDelayed(this, 30000);
+            }
+        }
+    };
 }

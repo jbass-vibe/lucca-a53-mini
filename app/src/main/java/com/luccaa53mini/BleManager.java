@@ -8,6 +8,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
+import androidx.annotation.NonNull;
+
 import java.util.*;
 
 /**
@@ -35,6 +37,13 @@ public class BleManager implements IS1Device {
     public static final UUID CHAR_RTC_READ =
             UUID.fromString("ACAB0005-67F5-479E-8711-B3B99198CE6C");
 
+    public static final UUID SERVICE_TEMP_UUID =
+            UUID.fromString("ACAB0001-67F5-479E-8711-B3B99198CE6C");
+    public static final UUID CHAR_BREW_TEMP =
+            UUID.fromString("ACAB0006-67F5-479E-8711-B3B99198CE6C");
+    public static final UUID CHAR_STEAM_TEMP =
+            UUID.fromString("ACAB0007-67F5-479E-8711-B3B99198CE6C");
+
     private static final long SCAN_TIMEOUT_MS   = 30_000;
     private static final long CONNECT_TIMEOUT_MS = 10_000;
     private static final long OP_TIMEOUT_MS      =  5_000;
@@ -58,6 +67,9 @@ public class BleManager implements IS1Device {
         void onRtcRead(int[] dateTime);           // [day,month,year,sub,hour,min,sec]
         void onRtcWritten();
 
+        void onBrewTempRead(double temp);
+        void onSteamTempRead(double temp);
+
         void onError(String message);
     }
 
@@ -73,11 +85,14 @@ public class BleManager implements IS1Device {
     private BluetoothLeScanner scanner;
     private BluetoothGatt gatt;
     private BluetoothDevice targetDevice;
+    private boolean firmwareSupportsTemp = false;
 
     private BluetoothGattCharacteristic charSyncControl;
     private BluetoothGattCharacteristic charSchedule;
     private BluetoothGattCharacteristic charRtcSet;
     private BluetoothGattCharacteristic charRtcRead;
+    private BluetoothGattCharacteristic charBrewTemp;
+    private BluetoothGattCharacteristic charSteamTemp;
 
     // Pending operations queue
     private final Queue<Runnable> opQueue = new LinkedList<>();
@@ -114,7 +129,10 @@ public class BleManager implements IS1Device {
             return;
         }
         scanner = adapter.getBluetoothLeScanner();
-        if (scanner == null) { notifyError("BLE scanner unavailable"); return; }
+        if (scanner == null) {
+            notifyError("BLE scanner unavailable");
+            return;
+        }
 
         state = State.SCANNING;
         mainHandler.post(() -> { if (listener != null) listener.onScanStarted(); });
@@ -154,16 +172,21 @@ public class BleManager implements IS1Device {
         public void onScanResult(int callbackType, ScanResult result) {
             BluetoothDevice dev = result.getDevice();
             String addr = dev.getAddress();
-            String name = (result.getScanRecord() != null) ? result.getScanRecord().getDeviceName() : null;
-            if (name == null) {
-                try { name = dev.getName(); } catch (SecurityException ignored) {}
+            String name;
+            try {
+                name = (result.getScanRecord() != null) ? result.getScanRecord().getDeviceName() : null;
+                if (name == null) {
+                    name = dev.getName();
+                }
+            } catch (SecurityException ignored) {
+                name = null;
             }
 
             // Identification: Service UUID ACAB0001 (Consistent with this kind of device)
             boolean matchedByUuid = false;
             if (result.getScanRecord() != null && result.getScanRecord().getServiceUuids() != null) {
                 for (android.os.ParcelUuid pUuid : result.getScanRecord().getServiceUuids()) {
-                    if (SERVICE_UUID.equals(pUuid.getUuid())) {
+                    if (Objects.equals(SERVICE_UUID, pUuid.getUuid())) {
                         matchedByUuid = true;
                         break;
                     }
@@ -183,6 +206,23 @@ public class BleManager implements IS1Device {
                 Log.d(TAG, "Matched S1 Device: " + name + " [" + addr + "] (UUID=" + matchedByUuid + ", Name=" + matchedByName + ")");
                 stopScan();
                 targetDevice = dev;
+
+                // Detect firmware version support (v2.xxx or later supports temperature)
+                firmwareSupportsTemp = false;
+                if (name != null && name.toLowerCase().contains("v.")) {
+                    try {
+                        String[] parts = name.toLowerCase().split("v\\.");
+                        if (parts.length > 1) {
+                            String versionPart = parts[1].trim();
+                            // Handles S1 v.2.0, S1 v.02.01, etc.
+                            if (versionPart.startsWith("2") || versionPart.startsWith("02")) {
+                                firmwareSupportsTemp = true;
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                }
+                Log.d(TAG, "Firmware supports temperature: " + firmwareSupportsTemp);
+
                 String finalName = (name != null) ? name.trim() : "S1 Machine";
                 mainHandler.post(() -> {
                     if (listener != null) listener.onDeviceFound(finalName, addr);
@@ -260,7 +300,13 @@ public class BleManager implements IS1Device {
     }
 
     private void failConnection(String reason) {
-        if (gatt != null) { gatt.close(); gatt = null; }
+        if (gatt != null) {
+            try {
+                gatt.close();
+            } catch (SecurityException ignored) {
+            }
+            gatt = null;
+        }
         state = State.ERROR;
         mainHandler.post(() -> { if (listener != null) listener.onConnectionFailed(reason); });
     }
@@ -334,7 +380,6 @@ public class BleManager implements IS1Device {
                 }
 
                 // NEW: Check if it was a host-initiated normal disconnect (0x16 / 22)
-                boolean isNormalHostTeardown = (status == 22);
                 boolean wasConnected = (state == State.CONNECTED);
                 state = State.DISCONNECTED;
 
@@ -357,46 +402,68 @@ public class BleManager implements IS1Device {
         }
 
         @Override
-        public void onServicesDiscovered(BluetoothGatt g, int status) {
+        public void onServicesDiscovered(@NonNull BluetoothGatt g, int status) {
             if (App.isDebuggable()) Log.d(TAG, "onServicesDiscovered - status: " + status);
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 notifyError(getHumanReadableError(status, "discovery"));
                 return;
             }
 
-            // Debug: Log ALL services and characteristics
-            for (BluetoothGattService s : g.getServices()) {
-                Log.d(TAG, "Service: " + s.getUuid().toString());
-                for (BluetoothGattCharacteristic c : s.getCharacteristics()) {
-                    Log.d(TAG, "  Char: " + c.getUuid().toString() + " [" + c.getInstanceId() + "]");
+            // Android GATT discovery can sometimes be racy.
+            // We'll add a significant delay to ensure everything is settled.
+            mainHandler.postDelayed(() -> {
+                if (gatt == null) return;
+
+                Log.d(TAG, "--- RECURSIVE CHARACTERISTIC DISCOVERY START ---");
+                for (BluetoothGattService s : gatt.getServices()) {
+                    Log.d(TAG, "Service Found: " + s.getUuid().toString());
+                    for (BluetoothGattCharacteristic c : s.getCharacteristics()) {
+                        String uuidStr = c.getUuid().toString().toUpperCase();
+                        int prop = c.getProperties();
+                        String propStr = ((prop & BluetoothGattCharacteristic.PROPERTY_READ) != 0 ? "R " : "") +
+                                         ((prop & BluetoothGattCharacteristic.PROPERTY_WRITE) != 0 ? "W " : "") +
+                                         ((prop & BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0 ? "N " : "");
+                        
+                        Log.d(TAG, "  -> Characteristic: " + uuidStr + " [" + propStr + "]");
+
+                        // Map by UUID suffix to be service-agnostic
+                        if (uuidStr.contains("ACAB0002")) charSyncControl = c;
+                        else if (uuidStr.contains("ACAB0003")) charSchedule = c;
+                        else if (uuidStr.contains("ACAB0004")) charRtcSet = c;
+                        else if (uuidStr.contains("ACAB0005")) charRtcRead = c;
+                        else if (uuidStr.contains("ACAB0006")) charBrewTemp = c;
+                        else if (uuidStr.contains("ACAB0007")) charSteamTemp = c;
+                    }
                 }
-            }
+                Log.d(TAG, "--- RECURSIVE CHARACTERISTIC DISCOVERY END ---");
 
-            BluetoothGattService svc = g.getService(SERVICE_UUID);
-            if (svc == null) {
-                failConnection("Machine service not found on device (ACAB0001)");
-                return;
-            }
-            charSyncControl = svc.getCharacteristic(CHAR_SYNC_CONTROL);
-            charSchedule    = svc.getCharacteristic(CHAR_SCHEDULE);
-            charRtcSet      = svc.getCharacteristic(CHAR_RTC_SET);
-            charRtcRead     = svc.getCharacteristic(CHAR_RTC_READ);
+                // Only fail if critical characteristics are missing
+                if (charSyncControl == null || charSchedule == null) {
+                    Log.e(TAG, "Mandatory S1 characteristics (0002/0003) missing!");
+                    failConnection("Required machine characteristics not found");
+                    return;
+                }
 
-            mainHandler.post(() -> { if (listener != null) listener.onServicesDiscovered(); });
+                if (firmwareSupportsTemp && (charBrewTemp == null || charSteamTemp == null)) {
+                    Log.w(TAG, "Device reports v2.x support but temperature characteristics were not found!");
+                }
+
+                if (listener != null) listener.onServicesDiscovered();
+            }, 1200);
         }
 
         @Override
-        public void onCharacteristicRead(BluetoothGatt g, BluetoothGattCharacteristic c,
+        public void onCharacteristicRead(@NonNull BluetoothGatt g, @NonNull BluetoothGattCharacteristic c,
                                          int status) {
             onCharacteristicRead(g, c, c.getValue(), status);
         }
 
         @Override
-        public void onCharacteristicRead(BluetoothGatt g, BluetoothGattCharacteristic c,
+        public void onCharacteristicRead(@NonNull BluetoothGatt g, @NonNull BluetoothGattCharacteristic c,
                                          byte[] value, int status) {
             mainHandler.removeCallbacks(opTimeoutRunnable);
             opInProgress = false;
-            
+
             UUID uuid = c.getUuid();
             byte[] val = (value != null) ? value : c.getValue();
 
@@ -414,17 +481,17 @@ public class BleManager implements IS1Device {
             }
 
             mainHandler.post(() -> {
-                if (CHAR_SYNC_CONTROL.equals(uuid)) {
+                if (Objects.equals(CHAR_SYNC_CONTROL, uuid)) {
                     final boolean enabled = val != null && val.length > 0 && val[0] == 0x01;
                     mainHandler.post(() -> {
                         if (listener != null) listener.onSyncControlRead(enabled);
                     });
-                } else if (CHAR_SCHEDULE.equals(uuid)) {
+                } else if (Objects.equals(CHAR_SCHEDULE, uuid)) {
                     final byte[] full = expandSchedule(val);
                     mainHandler.post(() -> {
                         if (listener != null) listener.onScheduleRead(full);
                     });
-                } else if (CHAR_RTC_READ.equals(uuid) || CHAR_RTC_SET.equals(uuid)) {
+                } else if (Objects.equals(CHAR_RTC_READ, uuid) || Objects.equals(CHAR_RTC_SET, uuid)) {
                     final int[] parsed = parseRtc(val);
                     if (App.isDebuggable()) {
                         Log.d(TAG, "RTC Read parsed: " + Arrays.toString(parsed));
@@ -432,13 +499,22 @@ public class BleManager implements IS1Device {
                     mainHandler.post(() -> {
                         if (listener != null) listener.onRtcRead(parsed);
                     });
+                } else if (Objects.equals(CHAR_BREW_TEMP, uuid) || Objects.equals(CHAR_STEAM_TEMP, uuid)) {
+                    final double temp = parseTemperature(val);
+                    mainHandler.post(() -> {
+                        if (Objects.equals(CHAR_BREW_TEMP, uuid)) {
+                            if (listener != null) listener.onBrewTempRead(temp);
+                        } else {
+                            if (listener != null) listener.onSteamTempRead(temp);
+                        }
+                    });
                 }
                 drainQueue();
             });
         }
 
         @Override
-        public void onCharacteristicWrite(BluetoothGatt g, BluetoothGattCharacteristic c,
+        public void onCharacteristicWrite(@NonNull BluetoothGatt g, @NonNull BluetoothGattCharacteristic c,
                                           int status) {
             mainHandler.removeCallbacks(opTimeoutRunnable);
             opInProgress = false;
@@ -450,11 +526,11 @@ public class BleManager implements IS1Device {
 
             mainHandler.post(() -> {
                 if (status == BluetoothGatt.GATT_SUCCESS) {
-                    if (CHAR_SYNC_CONTROL.equals(uuid) && listener != null)
+                    if (Objects.equals(CHAR_SYNC_CONTROL, uuid) && listener != null)
                         listener.onSyncControlWritten();
-                    else if (CHAR_SCHEDULE.equals(uuid) && listener != null)
+                    else if (Objects.equals(CHAR_SCHEDULE, uuid) && listener != null)
                         listener.onScheduleWritten();
-                    else if (CHAR_RTC_SET.equals(uuid) && listener != null)
+                    else if (Objects.equals(CHAR_RTC_SET, uuid) && listener != null)
                         listener.onRtcWritten();
                     drainQueue();
                 } else {
@@ -560,6 +636,18 @@ public class BleManager implements IS1Device {
         enqueue(() -> readChar(charRtcRead));
     }
 
+    /** Read brew boiler temperature */
+    @Override
+    public void readBrewBoiler() {
+        enqueue(() -> readChar(charBrewTemp));
+    }
+
+    /** Read steam boiler temperature */
+    @Override
+    public void readSteamBoiler() {
+        enqueue(() -> readChar(charSteamTemp));
+    }
+
     // ── Low-level GATT helpers ───────────────────────────────────────────────
     private void readChar(BluetoothGattCharacteristic c) {
         if (gatt == null || c == null) { opInProgress = false; drainQueue(); return; }
@@ -634,6 +722,17 @@ public class BleManager implements IS1Device {
         };
     }
 
+    /**
+     * Parse 16-bit signed little-endian temperature from 4-byte buffer.
+     * Bytes 0-1: Temperature (value / 10.0)
+     */
+    private static double parseTemperature(byte[] b) {
+        if (b == null || b.length < 2) return 0.0;
+        // 16-bit signed little-endian
+        short raw = (short) ((b[0] & 0xFF) | ((b[1] & 0xFF) << 8));
+        return raw / 10.0;
+    }
+
     /** Expand a variable-length schedule response to the canonical 84 bytes */
     private static byte[] expandSchedule(byte[] raw) {
         byte[] full = new byte[84];
@@ -646,6 +745,7 @@ public class BleManager implements IS1Device {
         return targetDevice != null ? targetDevice.getAddress() : "Lucca Espresso Machine";
     }
     @Override public boolean isStub() { return false; }
+    @Override public boolean supportsTemperature() { return firmwareSupportsTemp; }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
     private void notifyError(String msg) {

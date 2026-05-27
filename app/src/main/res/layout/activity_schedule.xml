@@ -138,7 +138,7 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Row 3: Master Scheduler Toggle -->
+        <!-- Row 3: Master Scheduler Toggle + Boiler Temps -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -155,14 +155,45 @@
 
             <TextView
                 android:id="@+id/tvMasterSwitchLabel"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
                 android:layout_marginStart="12dp"
                 android:text="@string/scheduler_master_disabled"
                 android:fontFamily="monospace"
                 android:textSize="12sp"
                 android:letterSpacing="0.05"
                 android:textColor="@color/cream"/>
+
+            <!-- Boiler Temps -->
+            <LinearLayout
+                android:id="@+id/layoutBoilerTemps"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/tvBrewTemp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="B: --.-°"
+                    android:fontFamily="monospace"
+                    android:textSize="11sp"
+                    android:textColor="@color/copper"
+                    android:layout_marginEnd="10dp"/>
+
+                <TextView
+                    android:id="@+id/tvSteamTemp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="S: --.-°"
+                    android:fontFamily="monospace"
+                    android:textSize="11sp"
+                    android:textColor="@color/copper"/>
+            </LinearLayout>
+
         </LinearLayout>
 
         <!-- Day tab bar - REMOVED for new on/off focused layout -->

@@ -4,17 +4,13 @@ plugins {
 }
 
 android {
-    namespace = "com.example.lucca_a53_mini"
-    compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
-    }
+    namespace = "com.luccaa53mini"
+    compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.lucca_a53_mini"
-        minSdk = 24
-        targetSdk = 36
+        applicationId = "com.luccaa53mini"
+        minSdk = 26
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
