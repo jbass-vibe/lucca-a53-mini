@@ -51,6 +51,12 @@ public interface IS1Device {
     /** Read the device's current RTC value. */
     void readRtc();
 
+    /** Read the current brew boiler temperature. */
+    void readBrewBoiler();
+
+    /** Read the current steam boiler temperature. */
+    void readSteamBoiler();
+
     // ── State ────────────────────────────────────────────────────────────────
 
     BleManager.State getState();
@@ -67,4 +73,7 @@ public interface IS1Device {
 
     /** True only for the stub; the UI uses this to show the DEV MODE banner. */
     boolean isStub();
+
+    /** True if the device firmware supports temperature reading (v2.xxx+). */
+    boolean supportsTemperature();
 }

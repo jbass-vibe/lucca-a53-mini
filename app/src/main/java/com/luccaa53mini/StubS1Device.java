@@ -34,6 +34,7 @@ public class StubS1Device implements IS1Device {
     @Override public boolean isConnected() { return state == BleManager.State.CONNECTED; }
     @Override public String getDeviceLabel() { return "LUCCA STUB  [DEV MODE]"; }
     @Override public boolean isStub() { return true; }
+    @Override public boolean supportsTemperature() { return true; }
 
     @Override public void startScan() {
         state = BleManager.State.SCANNING;
@@ -143,6 +144,20 @@ public class StubS1Device implements IS1Device {
     }
 
     @Override public void readRtc() { postDelay(DELAY_GATT_OP, () -> { if (listener != null) listener.onRtcRead(buildRtcResponse()); }); }
+
+    @Override
+    public void readBrewBoiler() {
+        postDelay(DELAY_GATT_OP, () -> {
+            if (listener != null) listener.onBrewTempRead(93.4);
+        });
+    }
+
+    @Override
+    public void readSteamBoiler() {
+        postDelay(DELAY_GATT_OP, () -> {
+            if (listener != null) listener.onSteamTempRead(122.1);
+        });
+    }
 
     // ── Fault injection ──────────────────────────────────────────────────────
 
