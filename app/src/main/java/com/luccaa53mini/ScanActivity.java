@@ -35,6 +35,7 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
 
     // Dev mode views
     private View         devBanner;
+    private View         devModeContainer;
     private SwitchCompat swDevMode;
 
     private static final int PERM_REQUEST = 101;
@@ -101,13 +102,14 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
         logScroll    = findViewById(R.id.logScroll);
         tvLogHeader  = findViewById(R.id.tvLogHeader);
         devBanner    = findViewById(R.id.devBanner);
+        devModeContainer = findViewById(R.id.devModeContainer);
         swDevMode    = findViewById(R.id.swDevMode);
     }
 
     private void applyDevModeUi() {
         if (!App.isDebuggable()) {
-            findViewById(R.id.devBanner).setVisibility(View.GONE);
-            swDevMode.setVisibility(View.GONE);
+            devModeContainer.setVisibility(View.GONE);
+            devBanner.setVisibility(View.GONE);
             return;
         }
         swDevMode.setChecked(App.devMode);

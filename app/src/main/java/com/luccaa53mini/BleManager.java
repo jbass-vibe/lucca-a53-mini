@@ -83,6 +83,8 @@ public class BleManager implements IS1Device {
     private final Queue<Runnable> opQueue = new LinkedList<>();
     private boolean opInProgress = false;
 
+    private int retryCount3E = 0;
+
     private final Runnable scanTimeoutRunnable = this::onScanTimeout;
     private final Runnable connectTimeoutRunnable = () ->
             failConnection("Connection timed out");
@@ -213,6 +215,7 @@ public class BleManager implements IS1Device {
         }
         state = State.CONNECTING;
         isConnectingWithAuto = false;
+        retryCount3E = 0; // NEW: Reset retry counter on explicit connection attempt
         mainHandler.post(() -> { if (listener != null) listener.onConnecting(); });
         mainHandler.removeCallbacks(connectTimeoutRunnable);
         mainHandler.postDelayed(connectTimeoutRunnable, CONNECT_TIMEOUT_MS);
@@ -305,14 +308,36 @@ public class BleManager implements IS1Device {
                     return;
                 }
 
+                // NEW: Handle 0x3E (62) - Connection Failed to be Established
+                if (status == 62 && retryCount3E < 3) {
+                    retryCount3E++;
+                    if (App.isDebuggable()) Log.w(TAG, "Connection failed with 0x3E. Retrying (" + retryCount3E + "/3)...");
+                    mainHandler.post(() -> {
+                        try { g.close(); } catch (SecurityException ignored) {}
+                        if (gatt == g) gatt = null;
+                        mainHandler.postDelayed(() -> {
+                            if (targetDevice != null) {
+                                try {
+                                    gatt = targetDevice.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE);
+                                } catch (SecurityException ignored) {}
+                            }
+                        }, 1000);
+                    });
+                    return; // Exit early to wait for retry
+                }
+
                 if (gatt == g) {
                     try {
                         gatt.close();
                     } catch (SecurityException ignored) {}
                     gatt = null;
                 }
+
+                // NEW: Check if it was a host-initiated normal disconnect (0x16 / 22)
+                boolean isNormalHostTeardown = (status == 22);
                 boolean wasConnected = (state == State.CONNECTED);
                 state = State.DISCONNECTED;
+
                 mainHandler.post(() -> {
                     if (wasConnected && listener != null) listener.onDisconnected();
                     else if (listener != null) {
@@ -390,16 +415,23 @@ public class BleManager implements IS1Device {
 
             mainHandler.post(() -> {
                 if (CHAR_SYNC_CONTROL.equals(uuid)) {
-                    if (listener != null) listener.onSyncControlRead(val != null && val.length > 0 && val[0] == 0x01);
+                    final boolean enabled = val != null && val.length > 0 && val[0] == 0x01;
+                    mainHandler.post(() -> {
+                        if (listener != null) listener.onSyncControlRead(enabled);
+                    });
                 } else if (CHAR_SCHEDULE.equals(uuid)) {
-                    byte[] full = expandSchedule(val);
-                    if (listener != null) listener.onScheduleRead(full);
+                    final byte[] full = expandSchedule(val);
+                    mainHandler.post(() -> {
+                        if (listener != null) listener.onScheduleRead(full);
+                    });
                 } else if (CHAR_RTC_READ.equals(uuid) || CHAR_RTC_SET.equals(uuid)) {
-                    int[] parsed = parseRtc(val);
+                    final int[] parsed = parseRtc(val);
                     if (App.isDebuggable()) {
                         Log.d(TAG, "RTC Read parsed: " + Arrays.toString(parsed));
                     }
-                    if (listener != null) listener.onRtcRead(parsed);
+                    mainHandler.post(() -> {
+                        if (listener != null) listener.onRtcRead(parsed);
+                    });
                 }
                 drainQueue();
             });
@@ -437,15 +469,26 @@ public class BleManager implements IS1Device {
     private String getHumanReadableError(int status, String opType) {
         String msg;
         switch (status) {
-            case 133:
+            case 8: // 0x08 Connection Timeout
+                msg = "Connection lost. Device moved out of range or powered off. Please retry.";
+                break;
+            case 19: // 0x13 Remote User Terminated Connection
+                msg = "Machine disconnected the link.";
+                break;
+            case 22: // 0x16 Connection Terminated by Local Host
+                msg = "Connection terminated by host.";
+                break;
+            case 34: // 0x22 LL Response Timeout
+                msg = "Link layer response timeout. Unexpected drop, please retry.";
+                break;
+            case 62: // 0x3E Connection Failed to be Established
+                msg = "Connection failed to establish after multiple attempts.";
+                break;
+            case 133: // GATT_ERROR
                 msg = "Bluetooth stack error. Solution: Toggle Bluetooth off and on, or restart your phone.";
                 break;
-            case 8: // GATT_INSUF_AUTHORIZATION
             case 137: // GATT_AUTH_FAIL
                 msg = "Pairing error. Solution: Unpair the machine in Android Bluetooth settings and try again.";
-                break;
-            case 19: // GATT_CONN_TERMINATE_PEER_USER
-                msg = "Machine disconnected the link.";
                 break;
             case 6: // GATT_NOT_FOUND
                 msg = "Bluetooth service not found. Make sure you are connecting to the correct machine.";

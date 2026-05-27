@@ -493,8 +493,9 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         for (int i = 0; i < slotsContainer.getChildCount(); i++) {
             View card = slotsContainer.getChildAt(i);
             card.setEnabled(enabled);
+            // Replace recursion with a simple alpha/click state check
             if (card instanceof ViewGroup) {
-                setViewGroupEnabled((ViewGroup) card, enabled);
+                card.setAlpha(enabled ? 1.0f : 0.5f);
             }
         }
         
@@ -506,19 +507,9 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         }
     }
 
-    private void setViewGroupEnabled(ViewGroup vg, boolean enabled) {
-        for (int i = 0; i < vg.getChildCount(); i++) {
-            View v = vg.getChildAt(i);
-            v.setEnabled(enabled);
-            if (v instanceof ViewGroup) {
-                setViewGroupEnabled((ViewGroup) v, enabled);
-            }
-        }
-    }
-
     private void setSyncStatus(String msg, boolean spinning) {
         tvSyncStatus.setText(msg); tvSyncStatus.setVisibility(View.VISIBLE); syncSpinner.setVisibility(spinning ? View.VISIBLE : View.GONE);
-        if (!spinning) mainHandler.postDelayed(() -> { if (!isFinishing()) tvSyncStatus.setVisibility(View.GONE); }, 3000);
+        if (!spinning) mainHandler.postDelayed(() -> { if (!isFinishing() && !isDestroyed()) tvSyncStatus.setVisibility(View.GONE); }, 3000);
     }
 
     private void updateConnectionStatus(boolean connected) {
@@ -553,13 +544,18 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
     @Override public void onScanTimeout() {}
     @Override public void onScanFailed(int c) {}
     @Override public void onConnecting() {}
-    @Override public void onConnected() { runOnUiThread(() -> updateConnectionStatus(true)); }
+    @Override public void onConnected() { 
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            updateConnectionStatus(true);
+        }); 
+    }
     @Override public void onServicesDiscovered() {}
     @Override public void onDisconnected() {
         runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
             setInteractionEnabled(true);
             updateConnectionStatus(false);
-            if (isFinishing() || isDestroyed()) return;
             dismissActiveDialog();
             activeDialog = new MaterialAlertDialogBuilder(this).setTitle("Disconnected")
                     .setMessage(App.devMode ? "Stub connection dropped." : "Your machine has disconnected.")
@@ -567,10 +563,18 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
                     .setNegativeButton("Stay", null).show();
         });
     }
-    @Override public void onConnectionFailed(String r) { runOnUiThread(() -> { setInteractionEnabled(true); updateConnectionStatus(false); setSyncStatus("Connection failed: " + r, false); }); }
+    @Override public void onConnectionFailed(String r) { 
+        runOnUiThread(() -> { 
+            if (isFinishing() || isDestroyed()) return;
+            setInteractionEnabled(true); 
+            updateConnectionStatus(false); 
+            setSyncStatus("Connection failed: " + r, false); 
+        }); 
+    }
     
     @Override public void onScheduleRead(byte[] raw) { 
         runOnUiThread(() -> { 
+            if (isFinishing() || isDestroyed()) return;
             S1Schedule readBack = S1Schedule.fromBytes(raw);
             if (currentSyncType == SyncType.SCHEDULE) {
                 byte[] pendingBytes = pendingSchedule.toBytes();
@@ -637,8 +641,12 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
     
     @Override public void onScheduleWritten() { 
         runOnUiThread(() -> { 
+            if (isFinishing() || isDestroyed()) return;
             if (currentSyncType == SyncType.SCHEDULE) {
-                mainHandler.postDelayed(() -> device.readSchedule(), 800);
+                mainHandler.postDelayed(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    device.readSchedule();
+                }, 800);
             } else {
                 setSyncStatus("Schedule saved ✓", false); 
                 checkAndSyncButton();
@@ -648,6 +656,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
     
     @Override public void onSyncControlRead(boolean e) {
         runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
             swMasterSync.setChecked(e);
             updateMasterSwitchUi(e);
             if (currentSyncType == SyncType.MASTER_TOGGLE) {
@@ -660,14 +669,19 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
 
     @Override public void onSyncControlWritten() {
         runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
             if (currentSyncType == SyncType.MASTER_TOGGLE) {
-                mainHandler.postDelayed(() -> device.readSyncControl(), 500);
+                mainHandler.postDelayed(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    device.readSyncControl();
+                }, 500);
             }
         });
     }
     
     @Override public void onRtcRead(int[] dt) {
         runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
             if (dt == null || dt.length < 7) {
                 setInteractionEnabled(true);
                 return;
@@ -729,15 +743,26 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
 
     @Override public void onRtcWritten() { 
         runOnUiThread(() -> { 
+            if (isFinishing() || isDestroyed()) return;
             if (currentSyncType == SyncType.CLOCK) {
-                mainHandler.postDelayed(() -> device.readRtc(), 800);
+                mainHandler.postDelayed(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    device.readRtc();
+                }, 800);
             } else {
                 setSyncStatus("Clock synced ✓", false); 
                 device.readRtc(); 
             }
         }); 
     }
-    @Override public void onError(String msg) { runOnUiThread(() -> { setInteractionEnabled(true); setSyncStatus("Error: " + msg, false); Toast.makeText(this, msg, Toast.LENGTH_SHORT).show(); }); }
+    @Override public void onError(String msg) { 
+        runOnUiThread(() -> { 
+            if (isFinishing() || isDestroyed()) return;
+            setInteractionEnabled(true); 
+            setSyncStatus("Error: " + msg, false); 
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show(); 
+        }); 
+    }
 
     private void dismissActiveDialog() {
         if (activeDialog != null && activeDialog.isShowing()) {
