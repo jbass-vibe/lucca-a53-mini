@@ -10,9 +10,22 @@
 		F873DC582FC7A8B400D41BB4 /* Lucca A53 mini.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Lucca A53 mini.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		F862C6D72FC90E53008372B2 /* Exceptions for "Lucca A53 mini" folder in "Lucca A53 mini" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = F873DC572FC7A8B400D41BB4 /* Lucca A53 mini */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		F873DC5A2FC7A8B400D41BB4 /* Lucca A53 mini */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				F862C6D72FC90E53008372B2 /* Exceptions for "Lucca A53 mini" folder in "Lucca A53 mini" target */,
+			);
 			path = "Lucca A53 mini";
 			sourceTree = "<group>";
 		};
