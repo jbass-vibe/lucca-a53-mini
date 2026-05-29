@@ -3,7 +3,7 @@ package com.luccaa53mini;
 import android.app.Application;
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.content.pm.ApplicationInfo;
+import com.luccaa53mini.BuildConfig;
 
 /**
  * Main Application class for the Lucca BT Remote app.
@@ -42,7 +42,7 @@ public class App extends Application {
      * @return True if the build is debuggable.
      */
     public static boolean isDebuggable() {
-        return (instance.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+        return BuildConfig.DEBUG;
     }
 
     // ── Dev mode toggle ──────────────────────────────────────────────────────

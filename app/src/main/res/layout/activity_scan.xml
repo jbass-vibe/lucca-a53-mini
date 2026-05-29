@@ -15,7 +15,7 @@
         android:paddingTop="64dp"
         android:paddingBottom="40dp">
 
-        <!-- Dev mode toggle row (always visible, top of screen) -->
+        <!-- Dev mode toggle row (hidden by default in release) -->
         <LinearLayout
             android:id="@+id/devModeContainer"
             android:layout_width="match_parent"
@@ -25,7 +25,8 @@
             android:layout_marginBottom="32dp"
             android:background="@drawable/bg_dev_toggle_row"
             android:paddingHorizontal="16dp"
-            android:paddingVertical="10dp">
+            android:paddingVertical="10dp"
+            android:visibility="gone">
 
             <TextView
                 android:layout_width="0dp"
