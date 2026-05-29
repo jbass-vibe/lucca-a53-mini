@@ -412,7 +412,7 @@ struct SlotCardView: View {
     private func dayChip(index: Int) -> some View {
         let selected = entry.days[index]
         return Button { toggleDay(index) } label: {
-            Text(uiDayLabels[index])
+            Text(String(S1Schedule.dayShort[index].prefix(1)))
                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                 .foregroundColor(selected ? .bgDark : .textMuted)
                 .frame(width: 32, height: 32)
@@ -426,10 +426,10 @@ struct SlotCardView: View {
         let turningOn = !entry.days[dayIdx]
         if turningOn {
             let count = allEntries.filter { $0.days[dayIdx] }.count
-            if count >= 3 { onMaxSlots(uiDayNames[dayIdx]); return }
+            if count >= 3 { onMaxSlots(S1Schedule.dayNames[dayIdx]); return }
             if hasOverlap(onH: entry.onH, onM: entry.onM,
                           offH: entry.offH, offM: entry.offM, dayIdx: dayIdx) {
-                onTimeConflict(uiDayNames[dayIdx]); return
+                onTimeConflict(S1Schedule.dayNames[dayIdx]); return
             }
         }
         entry.days[dayIdx] = turningOn
@@ -446,7 +446,7 @@ struct SlotCardView: View {
         for d in 0..<7 {
             guard entry.days[d] else { continue }
             if hasOverlap(onH: onH, onM: onM, offH: offH, offM: offM, dayIdx: d) {
-                return uiDayNames[d]
+                return S1Schedule.dayNames[d]
             }
         }
         return nil
@@ -526,3 +526,4 @@ struct TimePickerSheet: View {
         .presentationBackground(Color.bgDark)
     }
 }
+
