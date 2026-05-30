@@ -108,7 +108,7 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:gravity="center_horizontal"
-                android:padding="32dp">
+                android:padding="24dp">
 
                 <!-- BLE icon -->
                 <ImageView
@@ -148,33 +148,21 @@
                         android:gravity="center"/>
                 </LinearLayout>
 
-                <!-- Subtitle -->
-                <TextView
-                    android:id="@+id/tvSubtitle"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text=""
-                    android:fontFamily="monospace"
-                    android:textSize="12sp"
-                    android:textColor="@color/text_muted"
-                    android:gravity="center"
-                    android:lineSpacingExtra="4dp"
-                    android:layout_marginBottom="16dp"/>
-
                 <!-- Device info chip -->
                 <TextView
                     android:id="@+id/tvDeviceInfo"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:visibility="gone"
+                    android:layout_marginBottom="8dp"
                     android:background="@drawable/bg_chip"
-                    android:paddingHorizontal="16dp"
-                    android:paddingVertical="8dp"
                     android:fontFamily="monospace"
-                    android:textSize="11sp"
-                    android:textColor="@color/copper"
                     android:gravity="center"
-                    android:layout_marginBottom="16dp"/>
+                    android:paddingHorizontal="16dp"
+                    android:paddingVertical="6dp"
+                    android:textColor="@color/copper"
+                    android:textSize="11sp"
+                    android:text="DEVICE NAME\n00:00:00:00:00:00"
+                    android:visibility="invisible" />
 
             </LinearLayout>
         </androidx.cardview.widget.CardView>

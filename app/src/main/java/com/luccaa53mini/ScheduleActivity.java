@@ -46,7 +46,10 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         }
     }
     
+    private static final long RTC_DRIFT_THRESHOLD_MS = 2 * 60 * 1000;
     private final List<UiEntry> uiEntries = new ArrayList<>();
+    private boolean isFullSync = false;
+    private boolean isInitialized = false;
     private android.app.Dialog activeDialog;
 
     // Top bar
@@ -57,6 +60,8 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
     private ImageButton btnDisconnect;
     private ProgressBar syncSpinner;
     private TextView   tvSyncStatus;
+    private TextView   tvHeaderSubtitle;
+    private View       layoutSyncStatus;
     private SwitchCompat swMasterSync;
     private TextView     tvMasterSwitchLabel;
 
@@ -147,15 +152,18 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         btnSaveSync       = findViewById(R.id.btnSaveSync);
         btnSaveSpinner    = findViewById(R.id.btnSaveSpinner);
         devPanel          = findViewById(R.id.devPanel);
+        tvHeaderSubtitle  = findViewById(R.id.tvHeaderSubtitle);
+        layoutSyncStatus  = findViewById(R.id.layoutSyncStatus);
 
         btnDisconnect.setOnClickListener(v -> confirmDisconnect());
-        btnSync.setOnClickListener(v -> startClockSync());
+        btnSync.setOnClickListener(v -> { isFullSync = false; startClockSync(); });
         btnSaveSync.setOnClickListener(v -> checkAndPerformSync());
         btnAddSlot.setOnClickListener(v -> addNewEntry());
         
         swMasterSync.setOnCheckedChangeListener((v, checked) -> {
             updateMasterSwitchUi(checked);
             if (v.isPressed()) { // Only trigger if user manually flipped it
+                isFullSync = false;
                 currentSyncType = SyncType.MASTER_TOGGLE;
                 syncAttempts = 1;
                 performGenericWrite();
@@ -532,10 +540,9 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
                 return;
             }
         }
-        currentSyncType = SyncType.SCHEDULE;
+        isFullSync = true;
         pendingSchedule = convertUiToHardware();
-        syncAttempts = 1;
-        performGenericWrite();
+        startClockSync();
     }
 
     /** Initiates a clock synchronization sequence. */
@@ -577,6 +584,10 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
                 device.syncSchedule(pendingSchedule, TimeZone.getDefault());
                 break;
             case CLOCK:
+                if (isFullSync) {
+                    btnSaveSpinner.setVisibility(View.VISIBLE);
+                    btnSaveSync.setAlpha(0.5f);
+                }
                 device.syncRtc(TimeZone.getDefault());
                 break;
             case MASTER_TOGGLE:
@@ -595,6 +606,13 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         if (enabled) {
             btnSaveSpinner.setVisibility(View.GONE);
             btnSaveSync.setAlpha(1.0f);
+            btnSaveSync.setVisibility(View.VISIBLE);
+            checkAndSyncButton();
+        } else {
+            btnSaveSync.setEnabled(false);
+            if (!isInitialized) {
+                btnSaveSync.setVisibility(View.INVISIBLE);
+            }
         }
         
         for (int i = 0; i < slotsContainer.getChildCount(); i++) {
@@ -604,19 +622,32 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
                 card.setAlpha(enabled ? 1.0f : 0.5f);
             }
         }
-        
-        if (enabled) {
-            checkAndSyncButton();
-        } else {
-            btnSaveSync.setEnabled(false);
-        }
     }
 
     /** Updates the status banner message. */
     private void setSyncStatus(String msg, boolean spinning) {
-        tvSyncStatus.setText(msg); tvSyncStatus.setVisibility(View.VISIBLE); syncSpinner.setVisibility(spinning ? View.VISIBLE : View.GONE);
-        if (!spinning) mainHandler.postDelayed(() -> { if (!isFinishing() && !isDestroyed()) tvSyncStatus.setVisibility(View.GONE); }, 3000);
+        mainHandler.removeCallbacks(resetHeaderTask);
+        tvSyncStatus.setText(msg);
+        
+        // Show sync status container, hide static header
+        tvHeaderSubtitle.setVisibility(View.GONE);
+        layoutSyncStatus.setVisibility(View.VISIBLE);
+        syncSpinner.setVisibility(spinning ? View.VISIBLE : View.GONE);
+
+        if (!spinning) {
+            mainHandler.postDelayed(resetHeaderTask, 2000);
+        }
     }
+
+    private final Runnable resetHeaderTask = new Runnable() {
+        @Override
+        public void run() {
+            if (!isFinishing() && !isDestroyed()) {
+                layoutSyncStatus.setVisibility(View.GONE);
+                tvHeaderSubtitle.setVisibility(View.VISIBLE);
+            }
+        }
+    };
 
     /** Updates connection status UI helper. */
     private void updateConnectionStatus(boolean connected) {
@@ -702,10 +733,11 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
             if (currentSyncType == SyncType.SCHEDULE) {
                 byte[] pendingBytes = pendingSchedule.toBytes();
                 if (Arrays.equals(raw, pendingBytes)) {
-                    setSyncStatus("Schedule verified ✓", false);
+                    setSyncStatus("✓ Schedule verified", false);
                     hardwareSchedule = pendingSchedule;
                     pendingSchedule = null;
                     currentSyncType = SyncType.NONE;
+                    isFullSync = false;
                     setInteractionEnabled(true);
                     if (App.devMode && App.getStub() != null) App.getStub().clearVerifyFail();
                 } else {
@@ -717,7 +749,8 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
             } else {
                 hardwareSchedule = readBack;
                 loadUiEntriesFromHardware(); 
-                setSyncStatus("Schedule loaded ✓", false); 
+                setSyncStatus("✓ Schedule loaded", false); 
+                isInitialized = true;
                 setInteractionEnabled(true);
             }
         }); 
@@ -747,6 +780,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
             updateConnectionStatus(true, true); // Still connected, but sync failed
             showSyncFailureDialog();
             currentSyncType = SyncType.NONE;
+            isFullSync = false;
             pendingSchedule = null;
             pendingClockSyncTime = 0;
             setInteractionEnabled(true);
@@ -774,7 +808,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
                     device.readSchedule();
                 }, 800);
             } else {
-                setSyncStatus("Schedule saved ✓", false); 
+                setSyncStatus("✓ Schedule saved", false); 
                 checkAndSyncButton();
             }
         }); 
@@ -787,7 +821,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
             swMasterSync.setChecked(e);
             updateMasterSwitchUi(e);
             if (currentSyncType == SyncType.MASTER_TOGGLE) {
-                setSyncStatus("Scheduler " + (e ? "enabled" : "disabled") + " ✓", false);
+                setSyncStatus("✓ Scheduler " + (e ? "enabled" : "disabled"), false);
                 currentSyncType = SyncType.NONE;
             }
             setInteractionEnabled(true);
@@ -831,32 +865,46 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
             if (currentSyncType == SyncType.CLOCK) {
                 long diff = Math.abs(pendingClockSyncTime - devTime.getTimeInMillis());
                 if (diff < 30 * 1000) {
-                    setSyncStatus("Clock verified ✓", false);
-                    btnSync.setEnabled(false);
-                    btnSync.setAlpha(0.3f);
-                    currentSyncType = SyncType.NONE;
-                    pendingClockSyncTime = 0;
-                    updateConnectionStatus(true, false);
-                    setInteractionEnabled(true);
+                    setSyncStatus("✓ Clock verified", false);
+                    btnSync.setVisibility(View.GONE);
+                    
+                    if (isFullSync) {
+                        currentSyncType = SyncType.SCHEDULE;
+                        syncAttempts = 1;
+                        performGenericWrite();
+                    } else {
+                        currentSyncType = SyncType.NONE;
+                        pendingClockSyncTime = 0;
+                        updateConnectionStatus(true, false);
+                        setInteractionEnabled(true);
+                    }
+
                     if (App.devMode && App.getStub() != null) App.getStub().clearVerifyFail();
                 } else {
                     handleSyncRetry();
                 }
-            } else {
+            } else if (!isFullSync) {
                 setInteractionEnabled(true);
             }
 
-            String s = "Espresso Clock: " + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(devTime.getTime());
+            String timeStr = android.text.format.DateFormat.getTimeFormat(this).format(devTime.getTime());
+            if (!android.text.format.DateFormat.is24HourFormat(this)) {
+                timeStr = timeStr.replace(" AM", "AM").replace(" PM", "PM");
+            }
+            String dateStr = android.text.format.DateFormat.getDateFormat(this).format(devTime.getTime());
+            String s = String.format("Espresso Clock: %s %s", timeStr, dateStr);
             if (App.devMode) s += " [STUB]";
             tvDeviceRtc.setText(s); tvDeviceRtc.setVisibility(View.VISIBLE);
             
-            if (currentSyncType == SyncType.NONE && Math.abs(now.getTimeInMillis() - devTime.getTimeInMillis()) > 5 * 60 * 1000) {
-                btnSync.setVisibility(View.VISIBLE);
-                btnSync.setEnabled(true);
-                btnSync.setAlpha(1.0f);
-                promptRtcSync();
-            } else if (currentSyncType == SyncType.NONE) {
-                btnSync.setVisibility(View.GONE);
+            if (currentSyncType == SyncType.NONE) {
+                if (Math.abs(now.getTimeInMillis() - devTime.getTimeInMillis()) > RTC_DRIFT_THRESHOLD_MS) {
+                    btnSync.setVisibility(View.VISIBLE);
+                    btnSync.setEnabled(true);
+                    btnSync.setAlpha(1.0f);
+                    promptRtcSync();
+                } else {
+                    btnSync.setVisibility(View.GONE);
+                }
             }
         });
     }
@@ -879,7 +927,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
                     device.readRtc();
                 }, 800);
             } else {
-                setSyncStatus("Clock synced ✓", false); 
+                setSyncStatus("✓ Clock synced", false);
                 device.readRtc(); 
             }
         }); 
@@ -891,7 +939,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         runOnUiThread(() -> {
             if (isFinishing() || isDestroyed()) return;
             layoutBoilerTemps.setVisibility(View.VISIBLE);
-            tvBrewTemp.setText(String.format(Locale.US, "B: %.1f°C", temp));
+            tvBrewTemp.setText(String.format(Locale.US, "B:%.1f°C", temp));
         });
     }
 
@@ -901,7 +949,7 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         runOnUiThread(() -> {
             if (isFinishing() || isDestroyed()) return;
             layoutBoilerTemps.setVisibility(View.VISIBLE);
-            tvSteamTemp.setText(String.format(Locale.US, "S: %.1f°C", temp));
+            tvSteamTemp.setText(String.format(Locale.US, "S:%.1f°C", temp));
         });
     }
 

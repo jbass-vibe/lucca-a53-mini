@@ -39,14 +39,46 @@
                     android:textSize="22sp"
                     android:textColor="@color/cream"/>
 
-                <TextView
+                <FrameLayout
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="WEEKLY BOILER SCHEDULE"
-                    android:fontFamily="monospace"
-                    android:textSize="9sp"
-                    android:letterSpacing="0.18"
-                    android:textColor="@color/copper"/>
+                    android:layout_height="wrap_content">
+
+                    <TextView
+                        android:id="@+id/tvHeaderSubtitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="WEEKLY BOILER SCHEDULE"
+                        android:fontFamily="monospace"
+                        android:textSize="9sp"
+                        android:letterSpacing="0.18"
+                        android:textColor="@color/copper"
+                        android:visibility="visible"/>
+
+                    <LinearLayout
+                        android:id="@+id/layoutSyncStatus"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:visibility="gone">
+
+                        <ProgressBar
+                            android:id="@+id/syncSpinner"
+                            android:layout_width="12dp"
+                            android:layout_height="12dp"
+                            android:indeterminateTint="@color/copper"
+                            android:layout_marginEnd="6dp"/>
+
+                        <TextView
+                            android:id="@+id/tvSyncStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="monospace"
+                            android:textSize="9sp"
+                            android:textColor="@color/copper"
+                            android:textAllCaps="true"/>
+                    </LinearLayout>
+                </FrameLayout>
             </LinearLayout>
 
             <!-- BLE status dot + label -->
@@ -95,7 +127,6 @@
 
         </LinearLayout>
 
-        <!-- Row 2: device RTC + sync status -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -105,37 +136,12 @@
 
             <TextView
                 android:id="@+id/tvDeviceRtc"
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
                 android:visibility="gone"
                 android:fontFamily="monospace"
                 android:textSize="14sp"
                 android:textColor="@color/cream"/>
-
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <ProgressBar
-                    android:id="@+id/syncSpinner"
-                    android:layout_width="14dp"
-                    android:layout_height="14dp"
-                    android:indeterminateTint="@color/copper"
-                    android:visibility="gone"
-                    android:layout_marginEnd="6dp"/>
-
-                <TextView
-                    android:id="@+id/tvSyncStatus"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:visibility="gone"
-                    android:fontFamily="monospace"
-                    android:textSize="10sp"
-                    android:textColor="@color/copper"/>
-            </LinearLayout>
         </LinearLayout>
 
         <!-- Row 3: Master Scheduler Toggle + Boiler Temps -->
@@ -283,7 +289,8 @@
             android:textColor="@color/bg_dark"
             style="@style/Widget.MaterialComponents.Button"
             android:stateListAnimator="@null"
-            app:cornerRadius="14dp"/>
+            app:cornerRadius="14dp"
+            android:visibility="invisible"/>
 
         <ProgressBar
             android:id="@+id/btnSaveSpinner"

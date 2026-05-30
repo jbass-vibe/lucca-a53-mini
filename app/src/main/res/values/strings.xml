@@ -28,7 +28,7 @@
     <string name="btn_retry">Retry</string>
     <string name="btn_stop_scanning">Stop Scanning</string>
     <string name="btn_save_sync">Save &amp; Sync  →</string>
-    <string name="btn_synced">Schedule Synced ✓</string>
+    <string name="btn_synced">✓ Schedule Synced</string>
     <string name="log_entry">› %1$s</string>
     <string name="scheduler_master_enabled">All timers enabled</string>
     <string name="scheduler_master_disabled">All timers disabled</string>
