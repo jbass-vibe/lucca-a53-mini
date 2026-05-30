@@ -971,6 +971,16 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
         activeDialog = null;
     }
 
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (device != null) {
+            device.disconnect();
+        }
+        // Return to scan screen on resume to ensure fresh state
+        finish();
+    }
+
     /**
      * Performs final cleanup when activity is destroyed.
      */

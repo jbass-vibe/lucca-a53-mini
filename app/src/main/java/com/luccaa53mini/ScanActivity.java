@@ -98,6 +98,15 @@ public class ScanActivity extends AppCompatActivity implements BleManager.Listen
         setState(UiState.IDLE);
     }
 
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (device != null) {
+            device.stopScan();
+        }
+        setState(UiState.IDLE);
+    }
+
     /**
      * Perform any final cleanup before an activity is destroyed.
      * Stops any ongoing scans and cleans up handlers.
