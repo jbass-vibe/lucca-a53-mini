@@ -89,9 +89,9 @@ public class StubS1Device implements IS1Device {
     @Override
     public void syncSchedule(S1Schedule schedule, TimeZone tz) {
         postDelay(DELAY_GATT_OP, () -> {
-            if (listener != null) listener.onSyncControlWritten();
+            if (listener != null) listener.onSyncControlWritten(); // Mock 0x00 write
             postDelay(DELAY_GATT_OP, () -> {
-                if (listener != null) listener.onSyncControlWritten();
+                if (listener != null) listener.onSyncControlWritten(); // Mock 0x01 write
                 postDelay(DELAY_WRITE_SCHEDULE, () -> {
                     if (pendingWriteError) {
                         pendingWriteError = false;
@@ -100,17 +100,7 @@ public class StubS1Device implements IS1Device {
                     }
                     storedSchedule = S1Schedule.fromBytes(schedule.toBytes());
                     if (listener != null) listener.onScheduleWritten();
-                    postDelay(DELAY_GATT_OP, () -> {
-                        if (listener != null) listener.onRtcRead(buildRtcResponse());
-                        postDelay(DELAY_GATT_OP, () -> {
-                            applyRtcSync(tz);
-                            if (listener != null) listener.onRtcWritten();
-                            postDelay(DELAY_GATT_OP, () -> {
-                                if (listener != null) listener.onRtcRead(buildRtcResponse());
-                                maybeDropConnection();
-                            });
-                        });
-                    });
+                    maybeDropConnection();
                 });
             });
         });
@@ -227,7 +217,7 @@ public class StubS1Device implements IS1Device {
                 cal.get(Calendar.YEAR) - 2000,
                 cal.get(Calendar.MONTH) + 1,
                 cal.get(Calendar.DAY_OF_MONTH),
-                cal.get(Calendar.DAY_OF_WEEK),
+                (cal.get(Calendar.DAY_OF_WEEK) + 5) % 7, // Hardware mapping: Mon=0..Sun=6
                 cal.get(Calendar.HOUR_OF_DAY),
                 cal.get(Calendar.MINUTE),
                 cal.get(Calendar.SECOND)

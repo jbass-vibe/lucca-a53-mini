@@ -891,8 +891,9 @@ public class ScheduleActivity extends AppCompatActivity implements BleManager.Li
             if (!android.text.format.DateFormat.is24HourFormat(this)) {
                 timeStr = timeStr.replace(" AM", "AM").replace(" PM", "PM");
             }
+            String dowStr = new java.text.SimpleDateFormat("EEE", Locale.getDefault()).format(devTime.getTime());
             String dateStr = android.text.format.DateFormat.getDateFormat(this).format(devTime.getTime());
-            String s = String.format("Espresso Clock: %s %s", timeStr, dateStr);
+            String s = String.format("Espresso Clock: %s %s %s", timeStr, dowStr, dateStr);
             if (App.devMode) s += " [STUB]";
             tvDeviceRtc.setText(s); tvDeviceRtc.setVisibility(View.VISIBLE);
             

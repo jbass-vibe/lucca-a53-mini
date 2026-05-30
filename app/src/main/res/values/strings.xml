@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Lucca BT Remote</string>
+    <string name="app_name">Lucca Remote</string>
     <string name="header_title">LUCCA A53 MINI</string>
     <string name="searching_message">Looking for Machine</string>
 

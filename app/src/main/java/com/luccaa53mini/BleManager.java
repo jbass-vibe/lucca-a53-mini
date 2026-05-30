@@ -149,6 +149,10 @@ public class BleManager implements IS1Device {
     private BluetoothDevice targetDevice;
     private boolean firmwareSupportsTemp = false;
 
+    private boolean rtcSyncActive = false;
+    private int rtcRetryCount = 0;
+    private java.util.TimeZone rtcSyncTz;
+
     private BluetoothGattCharacteristic charSyncControl;
     private BluetoothGattCharacteristic charSchedule;
     private BluetoothGattCharacteristic charRtcSet;
@@ -593,14 +597,47 @@ public class BleManager implements IS1Device {
                     mainHandler.post(() -> {
                         if (listener != null) listener.onScheduleRead(full);
                     });
-                } else if (Objects.equals(CHAR_RTC_READ, uuid) || Objects.equals(CHAR_RTC_SET, uuid)) {
-                    final int[] parsed = parseRtc(val);
+                } else if (CHAR_RTC_READ.equals(uuid) || CHAR_RTC_SET.equals(uuid)) {
+                    int[] parsed = parseRtc(val);
+                    
+                    // Map Device DOW (Mon=0..Sun=6) back to Java DOW (Sun=1..Sat=7) for the UI/Listener
+                    if (parsed[3] != 0xFF) {
+                        parsed[3] = (parsed[3] + 1) % 7 + 1;
+                    }
+
                     if (App.isDebuggable()) {
                         Log.d(TAG, "RTC Read parsed: " + Arrays.toString(parsed));
                     }
-                    mainHandler.post(() -> {
+
+                    if (rtcSyncActive && CHAR_RTC_READ.equals(uuid)) {
+                        int deviceDow = parsed[3]; // Already mapped to Java 1-7
+                        java.util.Calendar cal = java.util.Calendar.getInstance(rtcSyncTz);
+                        int expectedDow = cal.get(java.util.Calendar.DAY_OF_WEEK);
+
+                        // If it's the initial read, or a verification read that failed (mismatch or corrupt 0xFF)
+                        if (rtcRetryCount == 0 || (deviceDow != expectedDow || deviceDow == 0xFF)) {
+                            if (rtcRetryCount < 2) { // Allow 1 retry after initial write
+                                // Add 500ms delay for retries as recommended by spec 5.3.3
+                                long delay = (rtcRetryCount > 0) ? 500 : 0;
+                                rtcRetryCount++;
+
+                                mainHandler.postDelayed(() -> {
+                                    enqueue(() -> writeChar(charRtcSet, buildRtcPayload(rtcSyncTz)));
+                                    enqueue(() -> readChar(charRtcRead)); // Read back to verify
+                                }, delay);
+                            } else {
+                                rtcSyncActive = false;
+                                notifyError("RTC Sync Failed: Device rejected DOW correction.");
+                            }
+                        } else {
+                            // DOW is correct and verified
+                            rtcSyncActive = false;
+                            if (listener != null) listener.onRtcWritten();
+                            if (listener != null) listener.onRtcRead(parsed);
+                        }
+                    } else {
                         if (listener != null) listener.onRtcRead(parsed);
-                    });
+                    }
                 } else if (Objects.equals(CHAR_BREW_TEMP, uuid) || Objects.equals(CHAR_STEAM_TEMP, uuid)) {
                     final double temp = parseTemperature(val);
                     mainHandler.post(() -> {
@@ -739,7 +776,9 @@ public class BleManager implements IS1Device {
      * @param tz The target timezone.
      */
     @Override public void syncRtc(java.util.TimeZone tz) {
-        enqueue(() -> writeChar(charRtcSet, buildRtcPayload(tz)));
+        rtcSyncActive = true;
+        rtcRetryCount = 0;
+        rtcSyncTz = tz;
         enqueue(() -> readChar(charRtcRead));
     }
 
@@ -836,12 +875,14 @@ public class BleManager implements IS1Device {
         int year  = cal.get(java.util.Calendar.YEAR) - 2000;
         int month = cal.get(java.util.Calendar.MONTH) + 1;
         int day   = cal.get(java.util.Calendar.DAY_OF_MONTH);
-        int dow   = cal.get(java.util.Calendar.DAY_OF_WEEK);
+        
+        // Map Java DOW (Sun=1..Sat=7) to S1 Machine DOW (Mon=0..Sun=6)
+        int dow = (cal.get(java.util.Calendar.DAY_OF_WEEK) + 5) % 7;
         
         int hour  = cal.get(java.util.Calendar.HOUR_OF_DAY);
         int min   = cal.get(java.util.Calendar.MINUTE);
         int sec   = cal.get(java.util.Calendar.SECOND);
-        
+
         return new byte[]{
                 (byte) year, (byte) month, (byte) day, (byte) dow,
                 (byte) hour, (byte) min, (byte) sec
