@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingVertical="8dp">
+
+    <!-- Header row: slot label + toggle -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/tvSlotRowLabel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Slot 1"
+            android:fontFamily="monospace"
+            android:textSize="12sp"
+            android:textColor="@color/cream"/>
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/swSlotRowEnabled"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:thumbTint="@color/switch_thumb_color"
+            android:trackTint="@color/switch_track_color"/>
+
+    </LinearLayout>
+
+    <!-- ON/OFF time buttons side by side -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:weightSum="2"
+        android:layout_marginTop="8dp">
+
+        <!-- ON time -->
+        <Button
+            android:id="@+id/btnSlotRowOn"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:layout_marginEnd="4dp"
+            android:text="ON 07:00 AM"
+            android:fontFamily="serif"
+            android:textSize="14sp"
+            android:textColor="@color/cream"
+            android:backgroundTint="@color/on_btn_bg"
+            style="@style/Widget.MaterialComponents.Button"
+            android:stateListAnimator="@null"
+            app:cornerRadius="10dp"/>
+
+        <!-- OFF time -->
+        <Button
+            android:id="@+id/btnSlotRowOff"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:text="OFF 08:00 AM"
+            android:fontFamily="serif"
+            android:textSize="14sp"
+            android:textColor="@color/cream"
+            android:backgroundTint="@color/off_btn_bg"
+            style="@style/Widget.MaterialComponents.Button"
+            android:stateListAnimator="@null"
+            app:cornerRadius="10dp"/>
+
+    </LinearLayout>
+
+    <!-- Conflict warning -->
+    <TextView
+        android:id="@+id/tvSlotRowConflict"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="⚠  ON and OFF times are the same"
+        android:fontFamily="monospace"
+        android:textSize="9sp"
+        android:textColor="#FFFF7043"
+        android:layout_marginTop="4dp"
+        android:visibility="gone"/>
+
+</LinearLayout>

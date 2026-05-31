@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.LuccaA53Mini" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="colorPrimary">@color/copper</item>
+        <item name="colorPrimaryVariant">@color/copper_dark</item>
+        <item name="colorOnPrimary">@color/bg_dark</item>
+        <item name="colorSecondary">@color/copper</item>
+        <item name="colorOnSecondary">@color/bg_dark</item>
+        <item name="colorSurface">@color/card_surface</item>
+        <item name="colorOnSurface">@color/cream</item>
+        <item name="android:colorBackground">@color/bg_dark</item>
+        <item name="colorOnBackground">@color/cream</item>
+        <item name="android:statusBarColor">@color/bg_dark</item>
+        <item name="android:navigationBarColor">@color/bg_dark</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="switchStyle">@style/LuccaSwitch</item>
+        <item name="materialAlertDialogTheme">@style/LuccaAlertDialog</item>
+    </style>
+
+    <style name="LuccaSwitch" parent="Widget.MaterialComponents.CompoundButton.Switch">
+        <item name="thumbTint">@color/switch_thumb_color</item>
+        <item name="trackTint">@color/switch_track_color</item>
+    </style>
+
+    <style name="LuccaAlertDialog" parent="ThemeOverlay.MaterialComponents.MaterialAlertDialog">
+        <!-- Dialog surface background -->
+        <item name="colorSurface">@color/card_surface</item>
+        <item name="colorOnSurface">@color/cream</item>
+
+        <!-- Typography -->
+        <item name="materialAlertDialogTitleTextStyle">@style/LuccaDialogTitle</item>
+        <item name="materialAlertDialogBodyTextStyle">@style/LuccaDialogBody</item>
+
+        <!-- Buttons -->
+        <item name="buttonBarPositiveButtonStyle">@style/LuccaDialogButton</item>
+        <item name="buttonBarNegativeButtonStyle">@style/LuccaDialogButtonNeg</item>
+
+        <!-- Shape -->
+        <item name="shapeAppearanceOverlay">@style/LuccaDialogShape</item>
+    </style>
+
+    <style name="LuccaDialogTitle" parent="MaterialAlertDialog.MaterialComponents.Title.Text">
+        <item name="android:textColor">@color/cream</item>
+        <item name="android:fontFamily">serif</item>
+        <item name="android:textSize">20sp</item>
+    </style>
+
+    <style name="LuccaDialogBody" parent="MaterialAlertDialog.MaterialComponents.Body.Text">
+        <item name="android:textColor">#FFBBBBBB</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:lineSpacingExtra">4dp</item>
+    </style>
+
+    <style name="LuccaDialogButton" parent="Widget.MaterialComponents.Button.TextButton">
+        <item name="android:textColor">@color/copper</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:letterSpacing">0.1</item>
+    </style>
+
+    <style name="LuccaDialogButtonNeg" parent="Widget.MaterialComponents.Button.TextButton">
+        <item name="android:textColor">#FF888888</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+
+    <style name="LuccaDialogShape">
+        <item name="cornerSize">20dp</item>
+    </style>
+
+</resources>

@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_dev_panel"
+    android:paddingHorizontal="16dp"
+    android:paddingTop="14dp"
+    android:paddingBottom="14dp">
+
+    <!-- Header row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="12dp">
+
+        <TextView
+            android:id="@+id/tvDevHeader"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="⚗  DEVELOPER CONTROLS"
+            android:fontFamily="monospace"
+            android:textSize="10sp"
+            android:textColor="#FF9B6FD4"
+            android:letterSpacing="0.18"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="STUB MODE"
+            android:fontFamily="monospace"
+            android:textSize="9sp"
+            android:textColor="#FF9B6FD4"
+            android:background="@drawable/bg_dev_chip"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="3dp"/>
+
+    </LinearLayout>
+
+    <!-- Divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#339B6FD4"
+        android:layout_marginBottom="12dp"/>
+
+    <!-- Row 1: Write error + Connection drop -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="8dp">
+
+        <Button
+            android:id="@+id/btnInjectWriteError"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:layout_marginEnd="6dp"
+            android:text="Fail Next Write"
+            android:fontFamily="monospace"
+            android:textSize="10sp"
+            android:textColor="#FFCE9AFF"
+            android:backgroundTint="#FF1E1028"
+            style="@style/Widget.MaterialComponents.Button"
+            android:stateListAnimator="@null"
+            app:cornerRadius="8dp"
+            app:strokeColor="#FF9B6FD4"
+            app:strokeWidth="1dp"/>
+
+        <Button
+            android:id="@+id/btnInjectDrop"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:layout_marginStart="6dp"
+            android:text="Drop Connection"
+            android:fontFamily="monospace"
+            android:textSize="10sp"
+            android:textColor="#FFCE9AFF"
+            android:backgroundTint="#FF1E1028"
+            style="@style/Widget.MaterialComponents.Button"
+            android:stateListAnimator="@null"
+            app:cornerRadius="8dp"
+            app:strokeColor="#FF9B6FD4"
+            app:strokeWidth="1dp"/>
+
+    </LinearLayout>
+
+    <!-- Row 2: Corrupt schedule + RTC drift -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="8dp">
+
+        <Button
+            android:id="@+id/btnInjectCorrupt"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:layout_marginEnd="6dp"
+            android:text="Corrupt Schedule"
+            android:fontFamily="monospace"
+            android:textSize="10sp"
+            android:textColor="#FFCE9AFF"
+            android:backgroundTint="#FF1E1028"
+            style="@style/Widget.MaterialComponents.Button"
+            android:stateListAnimator="@null"
+            app:cornerRadius="8dp"
+            app:strokeColor="#FF9B6FD4"
+            app:strokeWidth="1dp"/>
+
+        <Button
+            android:id="@+id/btnInjectRtcDrift"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:layout_marginStart="6dp"
+            android:text="Drift RTC −7 min"
+            android:fontFamily="monospace"
+            android:textSize="10sp"
+            android:textColor="#FFCE9AFF"
+            android:backgroundTint="#FF1E1028"
+            style="@style/Widget.MaterialComponents.Button"
+            android:stateListAnimator="@null"
+            app:cornerRadius="8dp"
+            app:strokeColor="#FF9B6FD4"
+            app:strokeWidth="1dp"/>
+
+    </LinearLayout>
+
+    <!-- Row 3: Force read + Fail Verification -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="8dp">
+
+        <Button
+            android:id="@+id/btnForceRead"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:layout_marginEnd="6dp"
+            android:text="Force Read State"
+            android:fontFamily="monospace"
+            android:textSize="10sp"
+            android:textColor="#FFCE9AFF"
+            android:backgroundTint="#FF1E1028"
+            style="@style/Widget.MaterialComponents.Button"
+            android:stateListAnimator="@null"
+            app:cornerRadius="8dp"
+            app:strokeColor="#FF9B6FD4"
+            app:strokeWidth="1dp"/>
+
+        <Button
+            android:id="@+id/btnInjectVerifyFail"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:layout_marginStart="6dp"
+            android:text="Fail Verification"
+            android:fontFamily="monospace"
+            android:textSize="10sp"
+            android:textColor="#FFCE9AFF"
+            android:backgroundTint="#FF1E1028"
+            style="@style/Widget.MaterialComponents.Button"
+            android:stateListAnimator="@null"
+            app:cornerRadius="8dp"
+            app:strokeColor="#FF9B6FD4"
+            app:strokeWidth="1dp"/>
+
+    </LinearLayout>
+
+</LinearLayout>

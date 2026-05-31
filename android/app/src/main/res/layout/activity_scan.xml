@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_dark"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:paddingHorizontal="28dp"
+        android:paddingTop="64dp"
+        android:paddingBottom="40dp">
+
+        <!-- Dev mode toggle row (hidden by default in release) -->
+        <LinearLayout
+            android:id="@+id/devModeContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="32dp"
+            android:background="@drawable/bg_dev_toggle_row"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="10dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="DEVELOPER MODE"
+                android:fontFamily="monospace"
+                android:textSize="10sp"
+                android:textColor="#FF9B6FD4"
+                android:letterSpacing="0.18"/>
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/swDevMode"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:thumbTint="#FF9B6FD4"
+                android:trackTint="@color/dev_track_color"/>
+
+        </LinearLayout>
+
+        <!-- Dev mode active banner (only visible when dev mode ON) -->
+        <LinearLayout
+            android:id="@+id/devBanner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:background="@drawable/bg_dev_banner"
+            android:paddingVertical="8dp"
+            android:paddingHorizontal="16dp"
+            android:layout_marginBottom="20dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tvDevLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⚗  STUB MODE — no real hardware required"
+                android:fontFamily="monospace"
+                android:textSize="10sp"
+                android:textColor="#FFCE9AFF"
+                android:letterSpacing="0.08"/>
+
+        </LinearLayout>
+
+        <!-- Wordmark / App header -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/header_title"
+            android:fontFamily="serif"
+            android:textSize="36sp"
+            android:textColor="@color/cream"
+            android:letterSpacing="0.12"
+            android:layout_marginBottom="4dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ESPRESSO SCHEDULER"
+            android:fontFamily="monospace"
+            android:textSize="10sp"
+            android:textColor="@color/copper"
+            android:letterSpacing="0.25"
+            android:layout_marginBottom="56dp"/>
+
+        <!-- Status card -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/cardStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="20dp"
+            app:cardBackgroundColor="@color/card_surface"
+            app:cardElevation="0dp"
+            android:layout_marginBottom="24dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal"
+                android:padding="24dp">
+
+                <!-- BLE icon -->
+                <ImageView
+                    android:id="@+id/iconBle"
+                    android:layout_width="72dp"
+                    android:layout_height="72dp"
+                    android:src="@drawable/ic_ble_search"
+                    android:layout_marginBottom="24dp"
+                    android:contentDescription="@null"/>
+
+                <!-- Title and Spinner Container -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="10dp">
+
+                    <!-- Spinner -->
+                    <ProgressBar
+                        android:id="@+id/spinner"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:indeterminateTint="@color/copper"
+                        android:visibility="gone"
+                        android:layout_marginEnd="12dp"/>
+
+                    <!-- Title -->
+                    <TextView
+                        android:id="@+id/tvTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/searching_message"
+                        android:fontFamily="serif"
+                        android:textSize="24sp"
+                        android:textColor="@color/cream"
+                        android:gravity="center"/>
+                </LinearLayout>
+
+                <!-- Device info chip -->
+                <TextView
+                    android:id="@+id/tvDeviceInfo"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/bg_chip"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:paddingHorizontal="16dp"
+                    android:paddingVertical="6dp"
+                    android:textColor="@color/copper"
+                    android:textSize="11sp"
+                    android:text="DEVICE NAME\n00:00:00:00:00:00"
+                    android:visibility="invisible" />
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- Action button container to prevent layout shifting -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="32dp">
+
+            <!-- Primary action button -->
+            <Button
+                android:id="@+id/btnPrimary"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:text="Start Scan"
+                android:fontFamily="monospace"
+                android:textSize="13sp"
+                android:letterSpacing="0.08"
+                android:backgroundTint="@color/copper"
+                android:textColor="@color/bg_dark"
+                style="@style/Widget.MaterialComponents.Button"
+                android:stateListAnimator="@null"
+                app:cornerRadius="14dp"/>
+
+            <!-- Cancel button (Stop Scanning / Cancel) -->
+            <Button
+                android:id="@+id/btnCancel"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:text="Cancel"
+                android:fontFamily="monospace"
+                android:textSize="13sp"
+                android:visibility="gone"
+                android:backgroundTint="@color/card_surface"
+                android:textColor="@color/text_muted"
+                style="@style/Widget.MaterialComponents.Button"
+                android:stateListAnimator="@null"
+                app:cornerRadius="14dp"/>
+
+        </FrameLayout>
+
+        <!-- Log section -->
+        <TextView
+            android:id="@+id/tvLogHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="CONNECTION LOG"
+            android:fontFamily="monospace"
+            android:textSize="9sp"
+            android:textColor="@color/copper"
+            android:letterSpacing="0.20"
+            android:visibility="gone"
+            android:layout_marginBottom="8dp"/>
+
+        <ScrollView
+            android:id="@+id/logScroll"
+            android:layout_width="match_parent"
+            android:layout_height="160dp"
+            android:visibility="visible">
+
+            <LinearLayout
+                android:id="@+id/logContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone"/>
+        </ScrollView>
+
+    </LinearLayout>
+</ScrollView>
