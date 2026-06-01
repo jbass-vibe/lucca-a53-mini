@@ -37,6 +37,9 @@ enum SyncType {
 @MainActor
 class BLEManager: NSObject, ObservableObject {
 
+    // Global override flag for developer mode
+    static let enableDeveloperModeOverride = false
+
     // MARK: Published State
     @Published var state: S1State = .idle
     @Published var deviceName: String = ""
@@ -45,12 +48,44 @@ class BLEManager: NSObject, ObservableObject {
     @Published var rtcDriftWarning: Bool = false
     @Published var masterEnabled: Bool = false
     @Published var uiEntries: [UiEntry] = []
-    @Published var syncStatus: String = ""
-    @Published var isSyncing: Bool = false
+    @Published var syncStatus: String = "" {
+        didSet {
+            if !syncStatus.isEmpty {
+                scheduleStatusClear()
+            }
+        }
+    }
+    @Published var isSyncing: Bool = false {
+        didSet {
+            if !isSyncing {
+                isFullSync = false
+            }
+        }
+    }
     @Published var scheduleChanged: Bool = false
     @Published var brewTemp: Double? = nil
     @Published var steamTemp: Double? = nil
     @Published var supportsTemperature: Bool = false
+    
+    // UI Failures
+    @Published var showSyncFailure: Bool = false
+    @Published var syncFailureItem: String = ""
+
+    // Developer / Stub Mode State
+    @Published var developerMode: Bool = false {
+        didSet {
+            UserDefaults.standard.set(developerMode, forKey: "lucca_dev_mode")
+        }
+    }
+    
+    // Stub properties (mirrors StubS1Device.java)
+    private var stubSchedule = S1Schedule()
+    private var pendingWriteError = false
+    private var pendingDropConnection = false
+    private var pendingVerifyFail = false
+    private var rtcOffsetMs: TimeInterval = -37_000
+    private var simTask: Task<Void, Never>? = nil
+    private var tempSimTask: Task<Void, Never>? = nil
 
     // MARK: Private
     private var centralManager: CBCentralManager!
@@ -69,8 +104,10 @@ class BLEManager: NSObject, ObservableObject {
     private var hardwareSchedule = S1Schedule()
     private var currentSyncType: SyncType = .none
     private var syncAttempts = 0
+    private var rtcRetryCount = 0
     private var pendingSchedule: S1Schedule? = nil
     private var pendingClockSyncTime: Date? = nil
+    private var isFullSync = false
 
     // BUG 1 FIX: track that a voluntary disconnect is in progress so
     // didDisconnectPeripheral doesn't misread wasConnected as false.
@@ -79,17 +116,60 @@ class BLEManager: NSObject, ObservableObject {
     private var scanTimer: Timer?
     private var opTimer: Timer?
     private var statusClearTimer: Timer?
+    private var connectTimer: Timer?
+    
     private static let SCAN_TIMEOUT: TimeInterval = 30
     private static let OP_TIMEOUT:   TimeInterval = 5
 
     override init() {
         super.init()
+        if BLEManager.enableDeveloperModeOverride {
+            self.developerMode = UserDefaults.standard.bool(forKey: "lucca_dev_mode")
+        } else {
+            self.developerMode = false
+        }
         centralManager = CBCentralManager(delegate: self, queue: .main)
+        
+        // Android buildSampleSchedule() parity: Set up default mock entries for stub
+        for d in 0..<5 {
+            stubSchedule.slots[d][0].enabled = true
+            stubSchedule.slots[d][0].onHour = 7
+            stubSchedule.slots[d][0].onMinute = 30
+            stubSchedule.slots[d][0].offHour = 8
+            stubSchedule.slots[d][0].offMinute = 30
+        }
     }
 
     // MARK: - Public API
 
     func startScan() {
+        if developerMode {
+            state = .scanning
+            simTask?.cancel()
+            simTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(1800)) // DELAY_SCAN_FOUND
+                guard !Task.isCancelled else { return }
+                self.deviceName = "Lucca #STUB"
+                self.deviceAddress = "DE:AD:BE:EF:CA:FE"
+                self.supportsTemperature = true
+                self.state = .deviceFound(name: "Lucca #STUB", address: "DE:AD:BE:EF:CA:FE")
+                
+                // Connection handshake sequence:
+                try? await Task.sleep(for: .milliseconds(600)) // DELAY_CONNECTING
+                guard !Task.isCancelled else { return }
+                self.state = .connecting
+                
+                try? await Task.sleep(for: .milliseconds(400)) // DELAY_CONNECTED
+                guard !Task.isCancelled else { return }
+                self.state = .connected
+                
+                try? await Task.sleep(for: .milliseconds(700)) // DELAY_SERVICES
+                guard !Task.isCancelled else { return }
+                self.state = .servicesDiscovered
+            }
+            return
+        }
+
         guard centralManager.state == .poweredOn else {
             // BUG 9 FIX: surface correct reason for non-poweredOn states
             switch centralManager.state {
@@ -108,6 +188,12 @@ class BLEManager: NSObject, ObservableObject {
     }
 
     func stopScan() {
+        if developerMode {
+            simTask?.cancel()
+            simTask = nil
+            if case .scanning = state { state = .idle }
+            return
+        }
         scanTimer?.invalidate(); scanTimer = nil
         centralManager.stopScan()
         if case .scanning = state { state = .idle }
@@ -119,6 +205,20 @@ class BLEManager: NSObject, ObservableObject {
         peripheral?.delegate = self
         state = .connecting
         centralManager.connect(periph, options: nil)
+        
+        // Android parity: Explicit 10-second connection timeout guard
+        connectTimer?.invalidate()
+        connectTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { [weak self] _ in
+            guard let self = self else { return }
+            Task { @MainActor in
+                if case .connecting = self.state {
+                    if let p = self.peripheral {
+                        self.centralManager.cancelPeripheralConnection(p)
+                    }
+                    self.state = .error("Connection timed out")
+                }
+            }
+        }
     }
 
     func disconnect() {
@@ -129,6 +229,7 @@ class BLEManager: NSObject, ObservableObject {
         opQueue.removeAll()
         opInProgress = false
         opTimer?.invalidate(); opTimer = nil
+        connectTimer?.invalidate(); connectTimer = nil
 
         // BUG 4 FIX: reset sync state on disconnect so spinner never hangs.
         isSyncing = false
@@ -136,6 +237,15 @@ class BLEManager: NSObject, ObservableObject {
         pendingSchedule = nil
         pendingClockSyncTime = nil
         syncAttempts = 0
+
+        if developerMode {
+            simTask?.cancel()
+            simTask = nil
+            tempSimTask?.cancel()
+            tempSimTask = nil
+            state = .disconnected
+            return
+        }
 
         if let p = peripheral { centralManager.cancelPeripheralConnection(p) }
         // peripheral / characteristics are cleared in didDisconnectPeripheral
@@ -145,6 +255,55 @@ class BLEManager: NSObject, ObservableObject {
     // MARK: - Protocol Operations
 
     func readScheduleAndState() {
+        if developerMode {
+            simTask?.cancel()
+            simTask = Task { @MainActor in
+                // Simulating schedule read
+                try? await Task.sleep(for: .milliseconds(120)) // DELAY_GATT_OP
+                guard !Task.isCancelled else { return }
+                
+                var raw: [UInt8]
+                if pendingVerifyFail {
+                    pendingVerifyFail = false
+                    // Android buildSampleSchedule() parity
+                    var bad = S1Schedule()
+                    for d in 0..<5 {
+                        bad.slots[d][0].enabled = true
+                        bad.slots[d][0].onHour = 7
+                        bad.slots[d][0].onMinute = 30
+                        bad.slots[d][0].offHour = 8
+                        bad.slots[d][0].offMinute = 30
+                    }
+                    raw = bad.toBytes()
+                } else {
+                    raw = stubSchedule.toBytes()
+                }
+                
+                let readBack = S1Schedule.fromBytes(raw)
+                hardwareSchedule = readBack
+                uiEntries = S1Schedule.loadUiEntries(from: readBack)
+                
+                // Simulating RTC read
+                try? await Task.sleep(for: .milliseconds(120)) // DELAY_GATT_OP
+                guard !Task.isCancelled else { return }
+                
+                let simulatedDate = Date().addingTimeInterval(rtcOffsetMs)
+                rtcString = "Espresso Clock: \(BLEManager.formatRtcDate(simulatedDate)) [STUB]"
+                rtcDriftWarning = abs(simulatedDate.timeIntervalSinceNow) > 120
+                
+                // Simulating Sync Control read
+                try? await Task.sleep(for: .milliseconds(120)) // DELAY_GATT_OP
+                guard !Task.isCancelled else { return }
+                
+                masterEnabled = true // default enabled
+                
+                isSyncing = false
+                syncStatus = "Schedule loaded"
+                scheduleStatusClear()
+            }
+            return
+        }
+
         enqueue { [weak self] in self?.readChar(\.charSchedule) }
         enqueue { [weak self] in self?.readChar(\.charRtcRead) }
         enqueue { [weak self] in self?.readChar(\.charSyncControl) }
@@ -154,11 +313,8 @@ class BLEManager: NSObject, ObservableObject {
         enqueue { [weak self] in self?.writeChar(\.charSyncControl, data: Data([0x00])) }
         enqueue { [weak self] in self?.writeChar(\.charSyncControl, data: Data([0x01])) }
         enqueue { [weak self] in self?.writeChar(\.charSchedule,    data: Data(schedule.toBytes())) }
-        // Read-back is triggered inside didWriteValueFor (not here) to avoid duplicate reads.
     }
 
-    // BUG 2 FIX: syncRtc no longer enqueues the read itself — didWriteValueFor
-    // does it after the write completes, so the read fires exactly once.
     func syncRtc() {
         let payload = BLEManager.buildRtcPayload()
         enqueue { [weak self] in self?.writeChar(\.charRtcSet, data: Data(payload)) }
@@ -173,6 +329,16 @@ class BLEManager: NSObject, ObservableObject {
     }
 
     func readBrewAndSteam() {
+        if developerMode {
+            tempSimTask?.cancel()
+            tempSimTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(120))
+                guard !Task.isCancelled else { return }
+                brewTemp = 93.4
+                steamTemp = 122.1
+            }
+            return
+        }
         enqueue { [weak self] in self?.readChar(\.charBrewTemp) }
         enqueue { [weak self] in self?.readChar(\.charSteamTemp) }
     }
@@ -180,19 +346,28 @@ class BLEManager: NSObject, ObservableObject {
     // MARK: - Schedule UI helpers
 
     func startScheduleSync() {
-        currentSyncType = .schedule
+        isFullSync = true
         pendingSchedule = S1Schedule.convertUiToHardware(uiEntries)
-        syncAttempts = 1
-        performWrite()
-    }
-
-    func startClockSync() {
+        
         currentSyncType = .clock
         let cal = Calendar.current
         var comps = cal.dateComponents([.year, .month, .day, .hour, .minute, .weekday], from: Date())
         comps.second = 0
         pendingClockSyncTime = cal.date(from: comps)
         syncAttempts = 1
+        rtcRetryCount = 0
+        performWrite()
+    }
+
+    func startClockSync() {
+        isFullSync = false
+        currentSyncType = .clock
+        let cal = Calendar.current
+        var comps = cal.dateComponents([.year, .month, .day, .hour, .minute, .weekday], from: Date())
+        comps.second = 0
+        pendingClockSyncTime = cal.date(from: comps)
+        syncAttempts = 1
+        rtcRetryCount = 0
         performWrite()
     }
 
@@ -220,14 +395,116 @@ class BLEManager: NSObject, ObservableObject {
     // MARK: - Private perform write
 
     private func performWrite() {
-        // BUG 5 FIX: validate pre-conditions before setting isSyncing so we
-        // never leave isSyncing=true with no way to clear it.
         if currentSyncType == .schedule && pendingSchedule == nil {
             isSyncing = false
             currentSyncType = .none
             return
         }
         isSyncing = true
+
+        if developerMode {
+            simTask?.cancel()
+            simTask = Task { @MainActor in
+                switch currentSyncType {
+                case .schedule:
+                    guard let sched = pendingSchedule else { return }
+                    syncStatus = "Syncing schedule…"
+                    
+                    try? await Task.sleep(for: .milliseconds(120))
+                    guard !Task.isCancelled else { return }
+                    
+                    try? await Task.sleep(for: .milliseconds(120))
+                    guard !Task.isCancelled else { return }
+                    
+                    try? await Task.sleep(for: .milliseconds(250)) // DELAY_WRITE_SCHEDULE
+                    guard !Task.isCancelled else { return }
+                    
+                    if pendingWriteError {
+                        pendingWriteError = false
+                        isSyncing = false
+                        currentSyncType = .none
+                        pendingSchedule = nil
+                        syncStatus = "Error: GATT Write Error (Simulated)"
+                        showSyncFailure = true
+                        syncFailureItem = "schedule"
+                        return
+                    }
+                    
+                    try? await Task.sleep(for: .milliseconds(120))
+                    guard !Task.isCancelled else { return }
+                    
+                    if pendingVerifyFail {
+                        handleSyncRetry()
+                    } else {
+                        stubSchedule = sched
+                        hardwareSchedule = sched
+                        pendingSchedule = nil
+                        currentSyncType = .none
+                        isSyncing = false
+                        scheduleChanged = false
+                        syncStatus = "Schedule verified"
+                        scheduleStatusClear()
+                        
+                        if pendingDropConnection {
+                            pendingDropConnection = false
+                            try? await Task.sleep(for: .milliseconds(400))
+                            voluntaryDisconnect = false
+                            state = .disconnected
+                        }
+                    }
+                    
+                case .clock:
+                    guard let pending = pendingClockSyncTime else { return }
+                    syncStatus = "Syncing clock…"
+                    
+                    try? await Task.sleep(for: .milliseconds(120))
+                    guard !Task.isCancelled else { return }
+                    
+                    try? await Task.sleep(for: .milliseconds(120))
+                    guard !Task.isCancelled else { return }
+                    
+                    if pendingVerifyFail {
+                        handleSyncRetry()
+                    } else {
+                        rtcOffsetMs = 0
+                        let simulatedDate = Date()
+                        rtcString = "Espresso Clock: \(BLEManager.formatRtcDate(simulatedDate)) [STUB]"
+                        rtcDriftWarning = false
+                        
+                        if isFullSync {
+                            currentSyncType = .schedule
+                            syncAttempts = 1
+                            performWrite()
+                        } else {
+                            currentSyncType = .none
+                            pendingClockSyncTime = nil
+                            isSyncing = false
+                            syncStatus = "Clock verified"
+                            scheduleStatusClear()
+                        }
+                    }
+                    
+                case .masterToggle:
+                    syncStatus = "Updating timer…"
+                    
+                    try? await Task.sleep(for: .milliseconds(120))
+                    guard !Task.isCancelled else { return }
+                    
+                    try? await Task.sleep(for: .milliseconds(120))
+                    guard !Task.isCancelled else { return }
+                    
+                    isSyncing = false
+                    currentSyncType = .none
+                    syncStatus = "Scheduler \(masterEnabled ? "enabled" : "disabled")"
+                    scheduleStatusClear()
+                    
+                case .none:
+                    isSyncing = false
+                }
+            }
+            return
+        }
+
         switch currentSyncType {
         case .schedule:
             guard let sched = pendingSchedule else { return }
@@ -256,19 +533,40 @@ class BLEManager: NSObject, ObservableObject {
                 self?.performWrite()
             }
         } else {
-            syncStatus = "Sync failed after 3 attempts"
             isSyncing = false
+            let itemName = (currentSyncType == .schedule) ? "schedule" : "clock settings"
             currentSyncType = .none
             pendingSchedule = nil
+            pendingClockSyncTime = nil
+            syncStatus = ""
+            
+            syncFailureItem = itemName
+            showSyncFailure = true
         }
     }
 
     // BUG 8 / 11 FIX: auto-clear status banner after success messages.
     private func scheduleStatusClear() {
         statusClearTimer?.invalidate()
-        statusClearTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
+        statusClearTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
             guard let selfRef = self else { return }
             Task { @MainActor in selfRef.syncStatus = "" }
+        }
+    }
+    
+    private func logScheduleMismatch(read: [UInt8], pending: [UInt8]) {
+        print("Verification failed. Byte mismatch:")
+        for i in 0..<7 {
+            let start = i * 12
+            let end = start + 12
+            guard end <= read.count, end <= pending.count else { continue }
+            let rDay = Array(read[start..<end])
+            let pDay = Array(pending[start..<end])
+            if rDay != pDay {
+                print("Day \(i) mismatch!")
+                print("  Read:    \(rDay)")
+                print("  Pending: \(pDay)")
+            }
         }
     }
 
@@ -280,7 +578,9 @@ class BLEManager: NSObject, ObservableObject {
         let year  = cal.component(.year,    from: now) - 2000
         let month = cal.component(.month,   from: now)
         let day   = cal.component(.day,     from: now)
-        let dow   = cal.component(.weekday, from: now)   // 1=Sun..7=Sat
+        // BUG FIX: Map iOS DOW (Sun=1..Sat=7) to S1 Machine DOW (Mon=0..Sun=6)
+        let calendarDow = cal.component(.weekday, from: now)
+        let dow = (calendarDow + 5) % 7
         let hour  = cal.component(.hour,    from: now)
         let min   = cal.component(.minute,  from: now)
         let sec   = cal.component(.second,  from: now)
@@ -294,11 +594,31 @@ class BLEManager: NSObject, ObservableObject {
         c.year    = Int(data[0]) + 2000
         c.month   = Int(data[1])
         c.day     = Int(data[2])
-        c.weekday = Int(data[3])
+        // BUG FIX: Map S1 Machine DOW (Mon=0..Sun=6) back to iOS DOW (Sun=1..Sat=7)
+        let rawDow = Int(data[3])
+        c.weekday = rawDow != 255 ? ((rawDow + 1) % 7 + 1) : 255
         c.hour    = Int(data[4])
         c.minute  = Int(data[5])
         c.second  = Int(data[6])
         return c
+    }
+
+    static func formatRtcDate(_ date: Date) -> String {
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateStyle = .none
+        timeFormatter.timeStyle = .short
+        let timeStr = timeFormatter.string(from: date)
+
+        let dayFormatter = DateFormatter()
+        dayFormatter.dateFormat = "EEE"
+        let dayStr = dayFormatter.string(from: date)
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .short
+        dateFormatter.timeStyle = .none
+        let dateStr = dateFormatter.string(from: date)
+
+        return "\(timeStr) \(dayStr) \(dateStr)"
     }
 
     static func parseTemperature(_ data: Data) -> Double {
@@ -321,7 +641,12 @@ class BLEManager: NSObject, ObservableObject {
             guard let selfRef = self else { return }
             Task { @MainActor in
                 selfRef.opInProgress = false
-                selfRef.drainQueue()
+                if selfRef.currentSyncType != .none {
+                    print("Operation timed out during sync! Retrying...")
+                    selfRef.handleSyncRetry()
+                } else {
+                    selfRef.drainQueue()
+                }
             }
         }
         let next = opQueue.removeFirst()
@@ -409,6 +734,7 @@ extension BLEManager: CBCentralManagerDelegate {
     nonisolated func centralManager(_ central: CBCentralManager,
                                     didConnect peripheral: CBPeripheral) {
         Task { @MainActor in
+            self.connectTimer?.invalidate(); self.connectTimer = nil
             self.voluntaryDisconnect = false
             self.state = .connected
             peripheral.delegate = self
@@ -420,6 +746,7 @@ extension BLEManager: CBCentralManagerDelegate {
                                     didFailToConnect peripheral: CBPeripheral,
                                     error: Error?) {
         Task { @MainActor in
+            self.connectTimer?.invalidate(); self.connectTimer = nil
             self.state = .error(error?.localizedDescription ?? "Connection failed")
         }
     }
@@ -500,7 +827,7 @@ extension BLEManager: CBPeripheralDelegate {
                 let enabled = data.count > 0 && data[0] == 0x01
                 if currentSyncType == .masterToggle {
                     if enabled == masterEnabled {
-                        syncStatus = "Scheduler \(enabled ? "enabled" : "disabled") ✓"
+                        syncStatus = "Scheduler \(enabled ? "enabled" : "disabled")"
                         isSyncing = false
                         currentSyncType = .none
                         scheduleStatusClear()
@@ -519,20 +846,22 @@ extension BLEManager: CBPeripheralDelegate {
 
                 if currentSyncType == .schedule, let pending = pendingSchedule {
                     if raw == pending.toBytes() {
-                        syncStatus = "Schedule verified ✓"
+                        syncStatus = "Schedule verified"
                         hardwareSchedule = pending
                         pendingSchedule = nil
                         currentSyncType = .none
                         isSyncing = false
                         scheduleChanged = false
+                        isFullSync = false
                         scheduleStatusClear()
                     } else {
+                        logScheduleMismatch(read: raw, pending: pending.toBytes())
                         handleSyncRetry()
                     }
                 } else {
                     hardwareSchedule = readBack
                     uiEntries = S1Schedule.loadUiEntries(from: readBack)
-                    syncStatus = "Schedule loaded ✓"
+                    syncStatus = "Schedule loaded"
                     isSyncing = false
                     scheduleChanged = false
                     scheduleStatusClear()   // BUG 8/11 FIX: auto-dismiss banner
@@ -541,19 +870,51 @@ extension BLEManager: CBPeripheralDelegate {
             } else if uuid.contains("ACAB0005") || uuid.contains("ACAB0004") {
                 guard let comps = BLEManager.parseRtc(data) else { return }
                 let devDate = Calendar.current.date(from: comps) ?? Date()
-                let df = DateFormatter(); df.dateStyle = .medium; df.timeStyle = .short
-                rtcString = "Espresso Clock: \(df.string(from: devDate))"
+                rtcString = "Espresso Clock: \(BLEManager.formatRtcDate(devDate))"
                 let drift = abs(devDate.timeIntervalSinceNow)
-                rtcDriftWarning = drift > 300
+                
+                // Matches Android threshold (2 minutes)
+                rtcDriftWarning = drift > 120
 
                 if currentSyncType == .clock, let pending = pendingClockSyncTime {
+                    let deviceDow = comps.weekday ?? 255
+                    let expectedDow = Calendar.current.component(.weekday, from: pending)
+
+                    // Error verification: If the machine rejects the Day of Week
+                    if deviceDow != expectedDow || deviceDow == 255 {
+                        if rtcRetryCount < 2 {
+                            rtcRetryCount += 1
+                            let delay = rtcRetryCount > 1 ? 0.5 : 0.0
+                            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                                self?.enqueue { [weak self] in self?.writeChar(\.charRtcSet, data: Data(BLEManager.buildRtcPayload())) }
+                            }
+                            return
+                        } else {
+                            syncStatus = "RTC Sync Failed: Device rejected DOW"
+                            isSyncing = false
+                            currentSyncType = .none
+                            pendingClockSyncTime = nil
+                            
+                            syncFailureItem = "clock settings"
+                            showSyncFailure = true
+                            return
+                        }
+                    }
+
                     if abs(devDate.timeIntervalSince(pending)) < 30 {
-                        syncStatus = "Clock verified ✓"
-                        isSyncing = false
-                        currentSyncType = .none
-                        pendingClockSyncTime = nil
                         rtcDriftWarning = false
-                        scheduleStatusClear()
+                        pendingClockSyncTime = nil
+                        
+                        if isFullSync {
+                            currentSyncType = .schedule
+                            syncAttempts = 1
+                            performWrite()
+                        } else {
+                            syncStatus = "Clock verified"
+                            isSyncing = false
+                            currentSyncType = .none
+                            scheduleStatusClear()
+                        }
                     } else {
                         handleSyncRetry()
                     }
@@ -606,5 +967,43 @@ extension BLEManager: CBPeripheralDelegate {
         case 133: return "Bluetooth stack error. Toggle Bluetooth off/on or restart the app."
         default:  return "Unexpected disconnection. Tap Scan to reconnect."
         }
+    }
+
+    // MARK: - Developer / Fault Injection APIs
+    
+    func injectWriteError() {
+        pendingWriteError = true
+    }
+    
+    func injectConnectionDrop() {
+        pendingDropConnection = true
+    }
+    
+    func injectVerifyFail() {
+        pendingVerifyFail = true
+    }
+    
+    func clearVerifyFail() {
+        pendingVerifyFail = false
+    }
+    
+    func injectRtcDrift(_ minutes: Int) {
+        rtcOffsetMs += TimeInterval(minutes * 60)
+    }
+    
+    func injectCorruptSchedule() {
+        var randomSched = S1Schedule()
+        for day in 0..<7 {
+            for slot in 0..<3 {
+                if Double.random(in: 0...1) > 0.6 {
+                    randomSched.slots[day][slot].enabled = true
+                    randomSched.slots[day][slot].onHour = Int.random(in: 0...23)
+                    randomSched.slots[day][slot].onMinute = Int.random(in: 0...59)
+                    randomSched.slots[day][slot].offHour = Int.random(in: 0...23)
+                    randomSched.slots[day][slot].offMinute = Int.random(in: 0...59)
+                }
+            }
+        }
+        stubSchedule = randomSched
     }
 }

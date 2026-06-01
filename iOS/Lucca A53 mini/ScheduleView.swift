@@ -10,6 +10,7 @@ struct ScheduleView: View {
     @State private var showMaxSlotsAlert:  String? = nil
     @State private var showTimeRangeAlert   = false
     @State private var showRemoveAlert: UiEntry? = nil
+    @State private var showEnableTimersAlert = false
     @State private var initialLoadDone      = false
 
     // BUG 6 & 7 FIX: Task is @MainActor-isolated and stored so it can be cancelled.
@@ -19,15 +20,10 @@ struct ScheduleView: View {
         ZStack {
             Color.bgDark.ignoresSafeArea()
             VStack(spacing: 0) {
+                header
                 topBar
-                // BUG 11 FIX: banner only shows while actually syncing or while a
-                // non-empty status exists; auto-clear is handled in BLEManager.
-                if ble.isSyncing || !ble.syncStatus.isEmpty {
-                    statusBanner
-                }
                 ScrollView {
                     VStack(spacing: 0) {
-                        if !ble.rtcString.isEmpty { rtcRow }
                         if ble.supportsTemperature, ble.brewTemp != nil || ble.steamTemp != nil {
                             boilerTemps
                         }
@@ -37,6 +33,12 @@ struct ScheduleView: View {
                             .padding(.horizontal, 16).padding(.top, 8)
                         addSlotButton
                             .padding(.horizontal, 16).padding(.top, 8)
+                        
+                        if ble.developerMode {
+                            developerToolsPanel
+                                .padding(.horizontal, 16).padding(.top, 16)
+                        }
+
                         Spacer(minLength: 100)
                     }
                 }
@@ -57,6 +59,20 @@ struct ScheduleView: View {
             Button("Later", role: .cancel) {}
         } message: {
             Text("Your espresso machine's internal clock has drifted and no longer matches your phone.\n\nWould you like to synchronize the machine's time now?")
+        }
+        .alert("Enable Schedule?", isPresented: $showEnableTimersAlert) {
+            Button("Enable") {
+                ble.masterEnabled = true
+                ble.startMasterToggle()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The weekly schedule is currently disabled. Would you like to enable it so you can add or edit times?")
+        }
+        .alert("Synchronization Error", isPresented: $ble.showSyncFailure) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("We tried to update your \(ble.syncFailureItem) 3 times, but the machine is not confirming the change.\n\nPlease check your connection and try again.")
         }
         .alert("Time Conflict", isPresented: .init(
             get: { showConflictAlert != nil },
@@ -113,13 +129,72 @@ struct ScheduleView: View {
 
     // MARK: - Top Bar
 
+    private var header: some View {
+        VStack(spacing: 2) {
+            if ble.developerMode {
+                Text("DEV MODE")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+                    .padding(.vertical, 4)
+                    .frame(maxWidth: .infinity)
+                    .background(Color(hex: "#9B6FD4"))
+            }
+            Text("LUCCA A53 MINI")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .tracking(4)
+                .foregroundColor(.copper)
+                .padding(.top, ble.developerMode ? 8 : 20)
+            Text("Bluetooth Remote")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(.textMuted)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.bottom, 8)
+        .overlay(alignment: .bottom) {
+            Divider().background(Color.divider)
+        }
+    }
+
     private var topBar: some View {
-        HStack(spacing: 12) {
+        let isSuccess = !ble.isSyncing && (ble.syncStatus.lowercased().contains("verified") || ble.syncStatus.lowercased().contains("loaded") || ble.syncStatus.lowercased().contains("enabled") || ble.syncStatus.lowercased().contains("disabled"))
+        
+        return HStack(spacing: 12) {
+            HStack(spacing: 6) {
+                if !ble.syncStatus.isEmpty {
+                    if ble.isSyncing {
+                        ProgressView()
+                            .tint(.copper)
+                            .scaleEffect(0.75)
+                            .frame(width: 14, height: 14)
+                    } else if isSuccess {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.bleGreen)
+                    } else if ble.syncStatus.lowercased().contains("error") || ble.syncStatus.lowercased().contains("failed") {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.bleRed)
+                    } else {
+                        Image(systemName: "info.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.copper)
+                    }
+                    
+                    Text(ble.syncStatus)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(isSuccess ? .bleGreen : (ble.syncStatus.lowercased().contains("error") || ble.syncStatus.lowercased().contains("failed") ? .bleRed : .copper))
+                } else if !ble.rtcString.isEmpty {
+                    Text(ble.rtcString)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.textMuted)
+                }
+            }
+            Spacer()
             Circle().fill(bleStatusColor).frame(width: 8, height: 8)
             Text(bleStatusText)
                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                 .foregroundColor(bleStatusColor)
-            Spacer()
+                .padding(.trailing, 4)
             if ble.rtcDriftWarning {
                 Button { ble.startClockSync() } label: {
                     Image(systemName: "clock.arrow.2.circlepath")
@@ -139,44 +214,17 @@ struct ScheduleView: View {
     private var bleStatusColor: Color {
         switch ble.state {
         case .disconnected, .error: return .bleRed
-        default:                    return .bleGreen
+        default:
+            return ble.developerMode ? Color(hex: "#9B6FD4") : .bleGreen
         }
     }
     private var bleStatusText: String {
         if case .disconnected = ble.state { return "Disconnected" }
+        if ble.developerMode { return "Connected [DEV]" }
         return "Connected"
     }
 
-    // MARK: - Status Banner
-
-    private var statusBanner: some View {
-        HStack(spacing: 8) {
-            if ble.isSyncing {
-                ProgressView().tint(.copper).scaleEffect(0.8)
-            } else {
-                Image(systemName: ble.syncStatus.contains("✓") ? "checkmark.circle.fill" : "info.circle.fill")
-                    .foregroundColor(ble.syncStatus.contains("✓") ? .bleGreen : .copper)
-                    .font(.system(size: 13))
-            }
-            Text(ble.syncStatus)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(.textPrimary)
-            Spacer()
-        }
-        .padding(.horizontal, 16).padding(.vertical, 8)
-        .background(Color.cardSurface2)
-        .overlay(alignment: .bottom) { Divider().background(Color.divider) }
-    }
-
     // MARK: - RTC / Temps
-
-    private var rtcRow: some View {
-        Text(ble.rtcString)
-            .font(.system(size: 11, design: .monospaced))
-            .foregroundColor(.textMuted)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16).padding(.vertical, 6)
-    }
 
     private var boilerTemps: some View {
         HStack(spacing: 16) {
@@ -197,7 +245,13 @@ struct ScheduleView: View {
     // MARK: - Master Toggle
 
     private var masterToggleCard: some View {
-        HStack {
+        HStack(spacing: 12) {
+            Toggle("", isOn: Binding(
+                get: { ble.masterEnabled },
+                set: { val in ble.masterEnabled = val; ble.startMasterToggle() }
+            ))
+            .tint(.copper).labelsHidden()
+            
             VStack(alignment: .leading, spacing: 2) {
                 Text(ble.masterEnabled ? "All timers enabled" : "All timers disabled")
                     .font(.system(size: 14, weight: .semibold, design: .monospaced))
@@ -207,11 +261,6 @@ struct ScheduleView: View {
                     .foregroundColor(.textMuted)
             }
             Spacer()
-            Toggle("", isOn: Binding(
-                get: { ble.masterEnabled },
-                set: { val in ble.masterEnabled = val; ble.startMasterToggle() }
-            ))
-            .tint(.copper).labelsHidden()
         }
         .padding(14)
         .luccaCard()
@@ -234,6 +283,7 @@ struct ScheduleView: View {
                     },
                     onTimeRangeError: { showTimeRangeAlert = true },
                     onChanged: { ble.checkScheduleChanged() },
+                    onDisabledTap: { showEnableTimersAlert = true },
                     allEntries: ble.uiEntries
                 )
             }
@@ -244,8 +294,11 @@ struct ScheduleView: View {
 
     private var addSlotButton: some View {
         Button {
-            guard ble.masterEnabled else { return }
-            ble.addNewEntry()
+            if ble.masterEnabled {
+                ble.addNewEntry()
+            } else {
+                showEnableTimersAlert = true
+            }
         } label: {
             Label("Add Scheduled Time", systemImage: "plus.circle")
                 .font(.system(size: 13, weight: .semibold, design: .monospaced))
@@ -253,7 +306,6 @@ struct ScheduleView: View {
         }
         .buttonStyle(CopperButtonStyle(isSecondary: true))
         .opacity(ble.masterEnabled ? 1 : 0.45)
-        .disabled(!ble.masterEnabled)
     }
 
     // MARK: - Bottom Bar
@@ -270,7 +322,7 @@ struct ScheduleView: View {
                         Text("Save & Sync  →")
                     } else {
                         Image(systemName: "checkmark.circle.fill")
-                        Text("Schedule Synced ✓")
+                        Text("Schedule Synced")
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -300,6 +352,10 @@ struct ScheduleView: View {
     private func startTempPolling() {
         tempPollTask?.cancel()
         tempPollTask = Task { @MainActor in
+            // Read immediately right when ScheduleView is opened
+            ble.readBrewAndSteam()
+            
+            // And then update every 30 seconds
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))
                 guard !Task.isCancelled else { break }
@@ -339,6 +395,7 @@ struct SlotCardView: View {
     let onMaxSlots:      (String) -> Void
     let onTimeRangeError: () -> Void
     let onChanged:       () -> Void
+    let onDisabledTap:   () -> Void
     let allEntries:      [UiEntry]
 
     @State private var showOnTimePicker  = false
@@ -370,7 +427,17 @@ struct SlotCardView: View {
         .padding(14)
         .luccaCard()
         .opacity(isActive ? 1 : 0.5)
-        .disabled(!isActive)
+        .overlay {
+            // Transparent overlay intercepts taps to trigger the "Enable Timers" dialog
+            // instead of silently dropping interaction when not active.
+            if !isActive {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        onDisabledTap()
+                    }
+            }
+        }
         .sheet(isPresented: $showOnTimePicker) {
             TimePickerSheet(hour: entry.onH, minute: entry.onM, label: "ON Time") { h, m in
                 guard isBefore(h, m, entry.offH, entry.offM) else { onTimeRangeError(); return }
@@ -527,3 +594,88 @@ struct TimePickerSheet: View {
     }
 }
 
+// MARK: - Developer Tools UI
+extension ScheduleView {
+    private var developerToolsPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "ladybug.fill")
+                    .foregroundColor(Color(hex: "#9B6FD4"))
+                Text("DEVELOPER TOOLS")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .tracking(2)
+                    .foregroundColor(Color(hex: "#9B6FD4"))
+            }
+            .padding(.bottom, 4)
+
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    Button("Inject Write Error") {
+                        ble.injectWriteError()
+                        ble.syncStatus = "Next write will fail (Simulated)"
+                    }
+                    .buttonStyle(DevButtonStyle())
+
+                    Button("Inject Drop") {
+                        ble.injectConnectionDrop()
+                        ble.syncStatus = "Will disconnect after next sync"
+                    }
+                    .buttonStyle(DevButtonStyle())
+                }
+
+                HStack(spacing: 8) {
+                    Button("Inject Verify Fail") {
+                        ble.injectVerifyFail()
+                        ble.syncStatus = "Next sync will fail verification"
+                    }
+                    .buttonStyle(DevButtonStyle())
+
+                    Button("Drift RTC -7m") {
+                        ble.injectRtcDrift(-7)
+                        ble.syncStatus = "Drift injected"
+                        ble.readScheduleAndState()
+                    }
+                    .buttonStyle(DevButtonStyle())
+                }
+
+                HStack(spacing: 8) {
+                    Button("Force Refresh") {
+                        ble.isSyncing = true
+                        ble.syncStatus = "Refreshing stub…"
+                        ble.readScheduleAndState()
+                        ble.readBrewAndSteam()
+                    }
+                    .buttonStyle(DevButtonStyle())
+
+                    Button("Randomize") {
+                        ble.isSyncing = true
+                        ble.syncStatus = "Randomizing schedule…"
+                        ble.injectCorruptSchedule()
+                        ble.readScheduleAndState()
+                    }
+                    .buttonStyle(DevButtonStyle())
+                }
+            }
+        }
+        .padding(14)
+        .background(Color.cardSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color(hex: "#9B6FD4").opacity(0.3), lineWidth: 1)
+        )
+    }
+}
+
+struct DevButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+            .foregroundColor(.white)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .background(Color(hex: "#9B6FD4").opacity(0.18))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .opacity(configuration.isPressed ? 0.7 : 1.0)
+    }
+}

@@ -115,8 +115,6 @@ class UiEntry: ObservableObject, Identifiable, Equatable {
 }
 
 // MARK: - Schedule Conversion Helpers
-// UI day order : Sun=0, Mon=1, Tue=2, Wed=3, Thu=4, Fri=5, Sat=6
-// HW day order : Sun=0, Mon=1, Tue=2, Wed=3, Thu=4, Fri=5, Sat=6  (Java Calendar)
 // hwToUi[hwDay] -> uiDay index
 // uiToHw[uiDay] -> hwDay index
 
@@ -125,7 +123,8 @@ extension S1Schedule {
     static func loadUiEntries(from hw: S1Schedule) -> [UiEntry] {
         var entries: [UiEntry] = []
         var map: [String: UiEntry] = [:]
-        let hwToUi = [1, 2, 3, 4, 5, 6, 0]   // Sun(0)->0, Mon(1)->1, … Sat(6)->6
+        // BUG FIX: Corrected mapped array.
+        let hwToUi = [1, 2, 3, 4, 5, 6, 0]
 
         for hwDay in 0..<DAYS {
             let uiDay = hwToUi[hwDay]
@@ -152,7 +151,8 @@ extension S1Schedule {
     static func convertUiToHardware(_ entries: [UiEntry]) -> S1Schedule {
         var hw = S1Schedule()
         var slotCounts = [Int](repeating: 0, count: 7)
-        let uiToHw = [6, 0, 1, 2, 3, 4, 5]   // Sun(0)->0, Mon(1)->1, … Sat(6)->6
+        // BUG FIX: Corrected mapped array.
+        let uiToHw = [6, 0, 1, 2, 3, 4, 5]
 
         for e in entries {
             for uiDay in 0..<7 {

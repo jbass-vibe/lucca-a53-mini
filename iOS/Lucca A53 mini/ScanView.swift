@@ -15,6 +15,13 @@ struct ScanView: View {
                     // ── Header ──────────────────────────────────────────
                     header
 
+                    // ── Developer Mode Toggle ────────────────────────────
+                    if BLEManager.enableDeveloperModeOverride {
+                        devModeToggle
+                            .padding(.horizontal, 24)
+                            .padding(.top, 12)
+                    }
+
                     // ── Central icon + status ────────────────────────────
                     Spacer()
                     centralStatus
@@ -25,11 +32,9 @@ struct ScanView: View {
                         .padding(.horizontal, 24)
 
                     // ── Log ──────────────────────────────────────────────
-                    if !logLines.isEmpty {
-                        logPanel
-                            .frame(maxHeight: 140)
-                            .padding(.top, 8)
-                    }
+                    logPanel
+                        .frame(maxHeight: 140)
+                        .padding(.top, 8)
 
                     Spacer(minLength: 32)
                 }
@@ -48,12 +53,20 @@ struct ScanView: View {
 
     private var header: some View {
         VStack(spacing: 2) {
+            if ble.developerMode {
+                Text("DEV MODE")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+                    .padding(.vertical, 4)
+                    .frame(maxWidth: .infinity)
+                    .background(Color(hex: "#9B6FD4"))
+            }
             Text("LUCCA A53 MINI")
                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                 .tracking(4)
                 .foregroundColor(.copper)
-                .padding(.top, 20)
-            Text("BT Remote")
+                .padding(.top, ble.developerMode ? 8 : 20)
+            Text("Bluetooth Remote")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(.textMuted)
         }
@@ -65,7 +78,9 @@ struct ScanView: View {
     }
 
     private var centralStatus: some View {
-        VStack(spacing: 20) {
+        let hasDevice = !ble.deviceName.isEmpty && !ble.deviceAddress.isEmpty
+        
+        return VStack(spacing: 20) {
             // BLE Icon
             ZStack {
                 Circle()
@@ -92,41 +107,52 @@ struct ScanView: View {
                 value: pulseAnim
             )
 
-            // Title
-            Text(titleText)
-                .font(.system(size: 20, weight: .bold, design: .monospaced))
-                .foregroundColor(.textPrimary)
-                .multilineTextAlignment(.center)
+            // Title + Spinner
+            HStack(spacing: 12) {
+                if isSpinning {
+                    ProgressView()
+                        .tint(.copper)
+                        .scaleEffect(0.95)
+                }
+                Text(titleText)
+                    .font(.system(size: 20, weight: .bold, design: .monospaced))
+                    .foregroundColor(.textPrimary)
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
 
             // Subtitle
-            Text(subtitleText)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(.textMuted)
-                .multilineTextAlignment(.center)
-                .lineSpacing(4)
-                .padding(.horizontal, 32)
+            if shouldShowSubtitle {
+                Text(subtitleText)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(.textMuted)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+                    .padding(.horizontal, 32)
+            }
 
-            // Device info (found state)
-            if case .deviceFound(let name, let addr) = ble.state {
-                VStack(spacing: 3) {
-                    Text(name)
+            // Stable Device Card Box to prevent layout shifts
+            VStack(spacing: 3) {
+                if hasDevice {
+                    Text(ble.deviceName)
                         .font(.system(size: 13, weight: .semibold, design: .monospaced))
                         .foregroundColor(.cream)
-                    Text(addr)
+                    Text(ble.deviceAddress)
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(.textMuted)
+                } else {
+                    // Hidden placeholders to reserve space exactly
+                    Text("Machine Name Placeholder")
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.clear)
+                    Text("DE:AD:BE:EF:CA:FE")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.clear)
                 }
-                .padding(.horizontal, 16).padding(.vertical, 8)
-                .background(Color.cardSurface2)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
-
-            // Spinner for scanning / connecting
-            if isSpinning {
-                ProgressView()
-                    .tint(.copper)
-                    .scaleEffect(1.1)
-            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(hasDevice ? Color.cardSurface2 : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .padding(.horizontal, 24)
     }
@@ -148,15 +174,12 @@ struct ScanView: View {
                 }
                 .buttonStyle(CopperButtonStyle(isSecondary: true))
 
-            case .deviceFound, .connecting, .connected:
+            case .deviceFound, .connecting, .connected, .servicesDiscovered:
                 Button("Cancel") {
                     addLog("Connection cancelled by user.")
                     ble.disconnect()
                 }
                 .buttonStyle(CopperButtonStyle(isDestructive: true))
-
-            case .servicesDiscovered:
-                EmptyView()
 
             case .error(let msg):
                 Text(msg)
@@ -184,16 +207,47 @@ struct ScanView: View {
                 .padding(.top, 8)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 3) {
-                    ForEach(logLines.indices, id: \.self) { i in
-                        Text("› \(logLines[i])")
+                    if logLines.isEmpty {
+                        Text("› System ready")
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(Color(hex: "#888888"))
+                            .foregroundColor(.textMuted)
+                    } else {
+                        ForEach(logLines.indices, id: \.self) { i in
+                            Text("› \(logLines[i])")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(ble.developerMode ? Color(hex: "#9B6FD4") : Color(hex: "#888888"))
+                        }
                     }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 6)
             }
         }
+    }
+
+    private var devModeToggle: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Developer Mode (Stub)")
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundColor(.textPrimary)
+                Text("Simulate connection without physical machine")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.textMuted)
+            }
+            Spacer()
+            Toggle("", isOn: $ble.developerMode)
+                .tint(Color(hex: "#9B6FD4"))
+                .labelsHidden()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color.cardSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.divider, lineWidth: 1)
+        )
     }
 
     // MARK: - State helpers
@@ -227,6 +281,15 @@ struct ScanView: View {
         }
     }
 
+    private var shouldShowSubtitle: Bool {
+        switch ble.state {
+        case .idle, .scanning, .deviceFound, .connecting, .connected, .servicesDiscovered, .disconnected:
+            return false
+        default:
+            return true
+        }
+    }
+
     private var isSpinning: Bool {
         switch ble.state {
         case .scanning, .connecting, .connected, .deviceFound: return true
@@ -236,7 +299,7 @@ struct ScanView: View {
 
     private var titleText: String {
         switch ble.state {
-        case .idle:               return "Looking for Machine"
+        case .idle:               return "Ready to Connect"
         case .scanning:           return "Scanning…"
         case .deviceFound:        return "Device Found"
         case .connecting:         return "Connecting…"
@@ -253,7 +316,7 @@ struct ScanView: View {
     private var subtitleText: String {
         switch ble.state {
         case .idle:
-            return "Make sure your espresso machine is powered on and nearby."
+            return "Press start to connect to espresso machine"
         case .scanning:
             return "Searching for an espresso machine via Bluetooth LE."
         case .deviceFound:
@@ -283,7 +346,7 @@ struct ScanView: View {
         case .error:            return "Retry"
         case .btDisabled:       return "Retry"
         case .permissionDenied: return "Grant Permission"
-        default:                return "Start Scan"
+        default:                return "Connect"
         }
     }
 
